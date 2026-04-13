@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Inventory;
 use App\Models\PurchaseOrder;
 use App\Models\SalesOrder;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
@@ -13,21 +14,34 @@ class OverviewController extends Controller
 {
     public function kpis(): JsonResponse
     {
-        $totalRevenue = SalesOrder::where('status', 'completed')->sum('total_amount');
+        $startDate = request('start_date')
+            ? Carbon::parse(request('start_date'))->startOfDay()
+            : now()->subMonths(6)->startOfDay();
 
-        $totalOrders = SalesOrder::where('status', 'completed')->count();
+        $endDate = request('end_date')
+            ? Carbon::parse(request('end_date'))->endOfDay()
+            : now()->endOfDay();
+
+        $salesQuery = SalesOrder::where('status', 'completed')
+            ->whereBetween('sold_at', [$startDate, $endDate]);
+
+        $purchaseQuery = PurchaseOrder::where('status', 'received')
+            ->whereBetween('purchased_at', [$startDate, $endDate]);
+
+        $totalRevenue = (clone $salesQuery)->sum('total_amount');
+        $totalOrders = (clone $salesQuery)->count();
 
         $averageOrderValue = $totalOrders > 0
             ? round($totalRevenue / $totalOrders, 2)
             : 0;
+
+        $purchaseSpend = (clone $purchaseQuery)->sum('total_cost');
 
         $inventoryValue = Inventory::join('products', 'inventory.product_id', '=', 'products.id')
             ->select(DB::raw('SUM(inventory.stock_on_hand * products.cost_price) as total'))
             ->value('total');
 
         $lowStockCount = Inventory::whereColumn('stock_on_hand', '<=', 'reorder_level')->count();
-
-        $purchaseSpend = PurchaseOrder::where('status', 'received')->sum('total_cost');
 
         return response()->json([
             'total_revenue' => round($totalRevenue, 2),
@@ -41,9 +55,17 @@ class OverviewController extends Controller
 
     public function revenueTrend(): JsonResponse
     {
+        $startDate = request('start_date')
+            ? Carbon::parse(request('start_date'))->startOfDay()
+            : now()->subMonths(6)->startOfDay();
+
+        $endDate = request('end_date')
+            ? Carbon::parse(request('end_date'))->endOfDay()
+            : now()->endOfDay();
+
         $trend = SalesOrder::selectRaw('DATE(sold_at) as date, SUM(total_amount) as revenue')
             ->where('status', 'completed')
-            ->where('sold_at', '>=', now()->subMonths(6))
+            ->whereBetween('sold_at', [$startDate, $endDate])
             ->groupBy('date')
             ->orderBy('date')
             ->get();
