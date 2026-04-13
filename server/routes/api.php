@@ -2,7 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-
+use App\Http\Controllers\Api\OverviewController;
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -18,3 +18,8 @@ Route::get('/health', function () {
         'status' => 'ok',
     ]);
 });
+
+Route::get('/overview/kpis', [OverviewController::class, 'kpis']);
+Route::get('/overview/revenue-trend', [OverviewController::class, 'revenueTrend']);
+Route::get('/overview/low-stock', [OverviewController::class, 'lowStock']);
+Route::get('/overview/recent-sales', [OverviewController::class, 'recentSales']);
