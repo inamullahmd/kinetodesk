@@ -21,54 +21,52 @@ function statusClasses(status: string) {
 
 export default function RecentSalesTable({ items }: RecentSalesTableProps) {
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div className="rounded-[28px] border border-black/6 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/6 dark:bg-[#11141d]">
       <div className="mb-4">
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
           Sales Feed
         </p>
-        <h2 className="mt-2 text-2xl font-bold tracking-[-0.02em] text-slate-900 dark:text-white">
+        <h2 className="mt-1 text-[1.6rem] font-bold tracking-[-0.03em] text-slate-950 dark:text-white">
           Recent sales
         </h2>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
+        <table className="min-w-full text-[13px]">
           <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-800">
-              <th className="py-3 pr-4 text-left font-semibold text-slate-500 dark:text-slate-400">
+            <tr className="border-b border-slate-200 dark:border-white/8">
+              <th className="py-3 pr-4 text-left font-medium text-slate-500 dark:text-slate-400">
                 Order
               </th>
-              <th className="py-3 pr-4 text-left font-semibold text-slate-500 dark:text-slate-400">
+              <th className="py-3 pr-4 text-left font-medium text-slate-500 dark:text-slate-400">
                 Customer
               </th>
-              <th className="py-3 pr-4 text-left font-semibold text-slate-500 dark:text-slate-400">
+              <th className="py-3 pr-4 text-left font-medium text-slate-500 dark:text-slate-400">
                 Product
               </th>
-              <th className="py-3 pr-4 text-left font-semibold text-slate-500 dark:text-slate-400">
+              <th className="py-3 pr-4 text-left font-medium text-slate-500 dark:text-slate-400">
                 Qty
               </th>
-              <th className="py-3 pr-4 text-left font-semibold text-slate-500 dark:text-slate-400">
+              <th className="py-3 pr-4 text-left font-medium text-slate-500 dark:text-slate-400">
                 Total
               </th>
-              <th className="py-3 text-left font-semibold text-slate-500 dark:text-slate-400">
+              <th className="py-3 text-left font-medium text-slate-500 dark:text-slate-400">
                 Status
               </th>
             </tr>
           </thead>
           <tbody>
             {items.map((sale) => (
-              <tr key={sale.order_number} className="border-b border-slate-100 dark:border-slate-800/70">
-                <td className="py-4 pr-4 font-normal text-slate-800 dark:text-slate-100">
-                  {sale.order_number}
-                </td>
-                <td className="py-4 pr-4 text-slate-700 dark:text-slate-300">{sale.customer_name}</td>
-                <td className="py-4 pr-4 text-slate-500 dark:text-slate-400">{sale.product_name}</td>
-                <td className="py-4 pr-4 text-slate-700 dark:text-slate-300">{sale.quantity}</td>
-                <td className="py-4 pr-4 font-semibold text-slate-800 dark:text-slate-100">
+              <tr key={sale.order_number} className="border-b border-slate-100 dark:border-white/6">
+                <td className="py-3.5 pr-4 text-slate-800 dark:text-slate-100">{sale.order_number}</td>
+                <td className="py-3.5 pr-4 text-slate-700 dark:text-slate-300">{sale.customer_name}</td>
+                <td className="py-3.5 pr-4 text-slate-500 dark:text-slate-400">{sale.product_name}</td>
+                <td className="py-3.5 pr-4 text-slate-700 dark:text-slate-300">{sale.quantity}</td>
+                <td className="py-3.5 pr-4 font-medium text-slate-900 dark:text-slate-100">
                   ${Number(sale.total_amount).toFixed(2)}
                 </td>
-                <td className="py-4">
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusClasses(sale.status)}`}>
+                <td className="py-3.5">
+                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusClasses(sale.status)}`}>
                     {sale.status}
                   </span>
                 </td>

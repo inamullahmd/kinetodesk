@@ -2,6 +2,7 @@ export type OverviewKpis = {
   total_revenue: number;
   total_orders: number;
   average_order_value: number;
+  units_sold: number;
   inventory_value: number;
   low_stock_count: number;
   purchase_spend: number;
@@ -9,7 +10,7 @@ export type OverviewKpis = {
 
 export type RevenueTrendPoint = {
   date: string;
-  revenue: string | number;
+  revenue: number;
 };
 
 export type LowStockItem = {
@@ -31,4 +32,19 @@ export type RecentSale = {
   sold_at: string;
 };
 
-export type DateRangeOption = '30d' | '3m' | '6m' | '12m' | 'custom';
+export type StatusPoint = {
+  name: string;
+  value: number;
+};
+
+export type TopProductPoint = {
+  name: string;
+  revenue: number;
+};
+
+export type CategorySalesPoint = {
+  name: string;
+  value: number;
+};
+
+export type DateRangeOption = '1m' | '3m' | '6m' | '12m' | 'custom';

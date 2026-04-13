@@ -29,7 +29,7 @@ export default function DashboardShell({
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="min-h-screen bg-stone-100 text-slate-900 dark:bg-[#0b0d12] dark:text-slate-100">
       <div className="flex min-h-screen">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
@@ -47,7 +47,9 @@ export default function DashboardShell({
             onApplyCustomRange={onApplyCustomRange}
           />
 
-          <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+          <main className="flex-1 px-4 py-5 sm:px-6 lg:px-8">
+            <div className="mx-auto w-full max-w-[1480px]">{children}</div>
+          </main>
         </div>
       </div>
     </div>
