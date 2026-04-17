@@ -16,3 +16,6 @@ Route::get('/overview/recent-sales', [OverviewController::class, 'recentSales'])
 Route::get('/overview/order-status', [OverviewController::class, 'orderStatus']);
 Route::get('/overview/top-products', [OverviewController::class, 'topProducts']);
 Route::get('/overview/sales-by-category', [OverviewController::class, 'salesByCategory']);
+Route::get('/overview/sales-by-region', [OverviewController::class, 'salesByRegion']);
+Route::get('/overview/low-stock-by-category', [OverviewController::class, 'lowStockByCategory']);
+Route::get('/overview', [OverviewController::class, 'overview']);

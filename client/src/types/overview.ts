@@ -47,4 +47,19 @@ export type CategorySalesPoint = {
   value: number;
 };
 
+export type RegionSalesPoint = {
+  name: string;
+  value: number;
+};
+
+export type CustomerTypeSalesPoint = {
+  name: string;
+  value: number;
+};
+
+export type LowStockCategoryPoint = {
+  name: string;
+  value: number;
+};
+
 export type DateRangeOption = '1m' | '3m' | '6m' | '12m' | 'custom';

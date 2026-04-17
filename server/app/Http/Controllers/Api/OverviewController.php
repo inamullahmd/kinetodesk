@@ -26,10 +26,8 @@ class OverviewController extends Controller
         return [$startDate, $endDate];
     }
 
-    public function kpis(Request $request): JsonResponse
+    private function buildKpis(Carbon $startDate, Carbon $endDate): array
     {
-        [$startDate, $endDate] = $this->resolveDateRange($request, 6);
-
         $salesQuery = SalesOrder::where('status', 'completed')
             ->whereBetween('sold_at', [$startDate, $endDate]);
 
@@ -52,7 +50,7 @@ class OverviewController extends Controller
 
         $lowStockCount = Inventory::whereColumn('stock_on_hand', '<=', 'reorder_level')->count();
 
-        return response()->json([
+        return [
             'total_revenue' => round($totalRevenue, 2),
             'total_orders' => (int) $totalOrders,
             'average_order_value' => $averageOrderValue,
@@ -60,14 +58,12 @@ class OverviewController extends Controller
             'inventory_value' => round($inventoryValue ?? 0, 2),
             'low_stock_count' => (int) $lowStockCount,
             'purchase_spend' => round($purchaseSpend, 2),
-        ]);
+        ];
     }
 
-    public function revenueTrend(Request $request): JsonResponse
+    private function buildRevenueTrend(Carbon $startDate, Carbon $endDate)
     {
-        [$startDate, $endDate] = $this->resolveDateRange($request, 6);
-
-        $trend = SalesOrder::selectRaw('DATE(sold_at) as date, SUM(total_amount) as revenue')
+        return SalesOrder::selectRaw('DATE(sold_at) as date, SUM(total_amount) as revenue')
             ->where('status', 'completed')
             ->whereBetween('sold_at', [$startDate, $endDate])
             ->groupBy('date')
@@ -78,61 +74,13 @@ class OverviewController extends Controller
                     'date' => $row->date,
                     'revenue' => round((float) $row->revenue, 2),
                 ];
-            });
-
-        return response()->json($trend);
+            })
+            ->values();
     }
 
-    public function lowStock(): JsonResponse
+    private function buildOrderStatus(Carbon $startDate, Carbon $endDate)
     {
-        $lowStockItems = Inventory::with('product')
-            ->whereColumn('stock_on_hand', '<=', 'reorder_level')
-            ->orderBy('stock_on_hand')
-            ->take(10)
-            ->get()
-            ->map(function ($item) {
-                return [
-                    'product_id' => $item->product_id,
-                    'product_name' => $item->product?->name,
-                    'sku' => $item->product?->sku,
-                    'stock_on_hand' => $item->stock_on_hand,
-                    'reorder_level' => $item->reorder_level,
-                ];
-            });
-
-        return response()->json($lowStockItems);
-    }
-
-    public function recentSales(Request $request): JsonResponse
-    {
-        [$startDate, $endDate] = $this->resolveDateRange($request, 6);
-
-        $recentSales = SalesOrder::with(['customer', 'product'])
-            ->whereBetween('sold_at', [$startDate, $endDate])
-            ->latest('sold_at')
-            ->take(10)
-            ->get()
-            ->map(function ($sale) {
-                return [
-                    'order_number' => $sale->order_number,
-                    'customer_name' => $sale->customer?->name,
-                    'product_name' => $sale->product?->name,
-                    'quantity' => (int) $sale->quantity,
-                    'unit_price' => (float) $sale->unit_price,
-                    'total_amount' => (float) $sale->total_amount,
-                    'status' => $sale->status,
-                    'sold_at' => $sale->sold_at,
-                ];
-            });
-
-        return response()->json($recentSales);
-    }
-
-    public function orderStatus(Request $request): JsonResponse
-    {
-        [$startDate, $endDate] = $this->resolveDateRange($request, 3);
-
-        $statuses = SalesOrder::selectRaw('LOWER(status) as name, COUNT(*) as value')
+        return SalesOrder::selectRaw('LOWER(status) as name, COUNT(*) as value')
             ->whereBetween('sold_at', [$startDate, $endDate])
             ->groupBy('name')
             ->orderBy('value', 'desc')
@@ -142,16 +90,13 @@ class OverviewController extends Controller
                     'name' => $row->name,
                     'value' => (int) $row->value,
                 ];
-            });
-
-        return response()->json($statuses);
+            })
+            ->values();
     }
 
-    public function topProducts(Request $request): JsonResponse
+    private function buildTopProducts(Carbon $startDate, Carbon $endDate)
     {
-        [$startDate, $endDate] = $this->resolveDateRange($request, 6);
-
-        $products = SalesOrder::join('products', 'sales_orders.product_id', '=', 'products.id')
+        return SalesOrder::join('products', 'sales_orders.product_id', '=', 'products.id')
             ->selectRaw('products.name as name, SUM(sales_orders.total_amount) as revenue')
             ->where('sales_orders.status', 'completed')
             ->whereBetween('sales_orders.sold_at', [$startDate, $endDate])
@@ -164,16 +109,13 @@ class OverviewController extends Controller
                     'name' => $row->name,
                     'revenue' => round((float) $row->revenue, 2),
                 ];
-            });
-
-        return response()->json($products);
+            })
+            ->values();
     }
 
-    public function salesByCategory(Request $request): JsonResponse
+    private function buildSalesByCategory(Carbon $startDate, Carbon $endDate)
     {
-        [$startDate, $endDate] = $this->resolveDateRange($request, 6);
-
-        $categories = SalesOrder::join('products', 'sales_orders.product_id', '=', 'products.id')
+        return SalesOrder::join('products', 'sales_orders.product_id', '=', 'products.id')
             ->join('categories', 'products.category_id', '=', 'categories.id')
             ->selectRaw('categories.name as name, SUM(sales_orders.total_amount) as value')
             ->where('sales_orders.status', 'completed')
@@ -187,8 +129,84 @@ class OverviewController extends Controller
                     'name' => $row->name,
                     'value' => round((float) $row->value, 2),
                 ];
-            });
+            })
+            ->values();
+    }
 
-        return response()->json($categories);
+    private function buildSalesByRegion(Carbon $startDate, Carbon $endDate)
+    {
+        $rows = SalesOrder::join('customers', 'sales_orders.customer_id', '=', 'customers.id')
+            ->selectRaw('customers.city as city, customers.state as state, SUM(sales_orders.total_amount) as value')
+            ->where('sales_orders.status', 'completed')
+            ->whereBetween('sales_orders.sold_at', [$startDate, $endDate])
+            ->groupBy('customers.city', 'customers.state')
+            ->get();
+
+        $buckets = [
+            'Norman' => 0,
+            'Rest of Oklahoma' => 0,
+            'Out of State' => 0,
+        ];
+
+        foreach ($rows as $row) {
+            $city = strtolower(trim((string) ($row->city ?? '')));
+            $state = strtolower(trim((string) ($row->state ?? '')));
+            $value = round((float) $row->value, 2);
+
+            if ($city === 'norman' && $state === 'oklahoma') {
+                $buckets['Norman'] += $value;
+            } elseif ($state === 'oklahoma') {
+                $buckets['Rest of Oklahoma'] += $value;
+            } else {
+                $buckets['Out of State'] += $value;
+            }
+        }
+
+        return collect($buckets)
+            ->map(function ($value, $name) {
+                return [
+                    'name' => $name,
+                    'value' => round((float) $value, 2),
+                ];
+            })
+            ->sortByDesc('value')
+            ->values();
+    }
+
+    private function buildSalesByCustomerType(Carbon $startDate, Carbon $endDate)
+    {
+        return SalesOrder::join('customers', 'sales_orders.customer_id', '=', 'customers.id')
+            ->selectRaw('LOWER(customers.customer_type) as name, SUM(sales_orders.total_amount) as value')
+            ->where('sales_orders.status', 'completed')
+            ->whereBetween('sales_orders.sold_at', [$startDate, $endDate])
+            ->groupBy('customers.customer_type')
+            ->orderByDesc('value')
+            ->get()
+            ->map(function ($row) {
+                return [
+                    'name' => $row->name,
+                    'value' => round((float) $row->value, 2),
+                ];
+            })
+            ->values();
+    }
+
+    public function overview(Request $request): JsonResponse
+    {
+        [$startDate, $endDate] = $this->resolveDateRange($request, 6);
+
+        return response()->json([
+            'kpis' => $this->buildKpis($startDate, $endDate),
+            'revenue_trend' => $this->buildRevenueTrend($startDate, $endDate),
+            'order_status' => $this->buildOrderStatus($startDate, $endDate),
+            'top_products' => $this->buildTopProducts($startDate, $endDate),
+            'sales_by_category' => $this->buildSalesByCategory($startDate, $endDate),
+            'sales_by_region' => $this->buildSalesByRegion($startDate, $endDate),
+            'sales_by_customer_type' => $this->buildSalesByCustomerType($startDate, $endDate),
+            'meta' => [
+                'start_date' => $startDate->toDateString(),
+                'end_date' => $endDate->toDateString(),
+            ],
+        ]);
     }
 }

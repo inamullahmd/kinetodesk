@@ -2,22 +2,36 @@ import { useEffect, useState } from 'react';
 import OrderStatusChart from '@/components/charts/OrderStatusChart';
 import RevenueTrendChart from '@/components/charts/RevenueTrendChart';
 import SalesByCategoryChart from '@/components/charts/SalesByCategoryChart';
+import SalesByCustomerTypeChart from '@/components/charts/SalesByCustomerTypeChart';
+import SalesByRegionChart from '@/components/charts/SalesByRegionChart';
 import TopProductsChart from '@/components/charts/TopProductsChart';
 import DashboardShell from '@/components/layout/DashboardShell';
 import KpiCard from '@/components/ui/KpiCard';
-import LowStockTable from '@/components/ui/LowStockTable';
-import RecentSalesTable from '@/components/ui/RecentSalesTable';
 import { api } from '@/services/api';
 import type {
   CategorySalesPoint,
+  CustomerTypeSalesPoint,
   DateRangeOption,
-  LowStockItem,
   OverviewKpis,
-  RecentSale,
+  RegionSalesPoint,
   RevenueTrendPoint,
   StatusPoint,
   TopProductPoint,
 } from '@/types/overview';
+
+type OverviewResponse = {
+  kpis: OverviewKpis;
+  revenue_trend: RevenueTrendPoint[];
+  order_status: StatusPoint[];
+  top_products: TopProductPoint[];
+  sales_by_category: CategorySalesPoint[];
+  sales_by_region: RegionSalesPoint[];
+  sales_by_customer_type: CustomerTypeSalesPoint[];
+  meta: {
+    start_date: string;
+    end_date: string;
+  };
+};
 
 function getDateRangeFromPreset(range: Exclude<DateRangeOption, 'custom'>) {
   const end = new Date();
@@ -58,11 +72,11 @@ export default function OverviewPage() {
 
   const [kpis, setKpis] = useState<OverviewKpis | null>(null);
   const [trend, setTrend] = useState<RevenueTrendPoint[]>([]);
-  const [lowStock, setLowStock] = useState<LowStockItem[]>([]);
-  const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
   const [statusData, setStatusData] = useState<StatusPoint[]>([]);
   const [topProductsData, setTopProductsData] = useState<TopProductPoint[]>([]);
   const [categoryData, setCategoryData] = useState<CategorySalesPoint[]>([]);
+  const [regionData, setRegionData] = useState<RegionSalesPoint[]>([]);
+  const [customerTypeData, setCustomerTypeData] = useState<CustomerTypeSalesPoint[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [range, setRange] = useState<DateRangeOption>('3m');
@@ -70,45 +84,39 @@ export default function OverviewPage() {
   const [endDate, setEndDate] = useState<string>(toInputDate(initialPreset.end));
 
   useEffect(() => {
+    let active = true;
+
     async function loadOverview() {
       try {
         setLoading(true);
 
-        const dateParams = { start_date: startDate, end_date: endDate };
+        const { data } = await api.get<OverviewResponse>('/overview', {
+          params: { start_date: startDate, end_date: endDate },
+        });
 
-        const [
-          kpisRes,
-          trendRes,
-          lowStockRes,
-          recentSalesRes,
-          orderStatusRes,
-          topProductsRes,
-          salesByCategoryRes,
-        ] = await Promise.all([
-          api.get('/overview/kpis', { params: dateParams }),
-          api.get('/overview/revenue-trend', { params: dateParams }),
-          api.get('/overview/low-stock'),
-          api.get('/overview/recent-sales', { params: dateParams }),
-          api.get('/overview/order-status', { params: dateParams }),
-          api.get('/overview/top-products', { params: dateParams }),
-          api.get('/overview/sales-by-category', { params: dateParams }),
-        ]);
+        if (!active) return;
 
-        setKpis(kpisRes.data);
-        setTrend(trendRes.data);
-        setLowStock(lowStockRes.data);
-        setRecentSales(recentSalesRes.data);
-        setStatusData(orderStatusRes.data);
-        setTopProductsData(topProductsRes.data);
-        setCategoryData(salesByCategoryRes.data);
+        setKpis(data.kpis);
+        setTrend(data.revenue_trend);
+        setStatusData(data.order_status);
+        setTopProductsData(data.top_products);
+        setCategoryData(data.sales_by_category);
+        setRegionData(data.sales_by_region);
+        setCustomerTypeData(data.sales_by_customer_type);
       } catch (error) {
         console.error('Failed to load overview data:', error);
       } finally {
-        setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
     }
 
     loadOverview();
+
+    return () => {
+      active = false;
+    };
   }, [startDate, endDate]);
 
   function handleRangeChange(nextRange: DateRangeOption) {
@@ -147,12 +155,12 @@ export default function OverviewPage() {
       onApplyCustomRange={handleApplyCustomRange}
     >
       {loading || !kpis ? (
-        <div className="rounded-[28px] border border-black/6 bg-white p-8 text-sm text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/6 dark:bg-[#151a24] dark:text-slate-400">
+        <div className="rounded-[24px] border border-black/6 bg-white p-6 text-sm text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/6 dark:bg-[#151a24] dark:text-slate-400">
           Loading dashboard...
         </div>
       ) : (
-        <div className="space-y-5">
-          <section className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-6">
+        <div className="space-y-4">
+          <section className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-6">
             <KpiCard
               title="Total Revenue"
               value={formatCurrency(kpis.total_revenue)}
@@ -185,57 +193,57 @@ export default function OverviewPage() {
             />
           </section>
 
-          <section className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+          <section className="grid grid-cols-1 gap-4 xl:grid-cols-12">
             <div className="xl:col-span-8">
               <RevenueTrendChart data={trend} />
             </div>
 
             <div className="xl:col-span-4">
-              <div className="flex h-full flex-col rounded-[28px] border border-black/6 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/6 dark:bg-[#151a24]">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+              <div className="flex h-full flex-col rounded-[24px] border border-black/6 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/6 dark:bg-[#151a24]">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                   Snapshot
                 </p>
-                <h2 className="mt-1 text-[1.6rem] font-bold tracking-[-0.03em] text-slate-950 dark:text-white">
+                <h2 className="mt-1 text-[1.35rem] font-bold tracking-[-0.03em] text-slate-950 dark:text-white">
                   Operational highlights
                 </h2>
 
-                <div className="mt-5 grid grid-cols-1 gap-3">
-                  <div className="rounded-[22px] border border-indigo-200/70 bg-indigo-50 px-4 py-4 dark:border-indigo-500/20 dark:bg-indigo-500/10">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-indigo-700 dark:text-indigo-300">
+                <div className="mt-4 grid grid-cols-1 gap-3">
+                  <div className="rounded-[20px] border border-indigo-200/70 bg-indigo-50 px-4 py-3.5 dark:border-indigo-500/20 dark:bg-indigo-500/10">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-indigo-700 dark:text-indigo-300">
                       Top Product
                     </div>
-                    <div className="mt-2 text-[1.05rem] font-semibold text-slate-950 dark:text-white">
+                    <div className="mt-2 text-[1rem] font-semibold text-slate-950 dark:text-white">
                       {topProduct?.name ?? '—'}
                     </div>
-                    <p className="mt-1 text-[13px] text-slate-600 dark:text-slate-300">
+                    <p className="mt-1 text-[12px] text-slate-600 dark:text-slate-300">
                       {topProduct
                         ? `${formatCurrency(Number(topProduct.revenue))} in revenue during the selected period.`
                         : 'No product sales recorded in the selected period.'}
                     </p>
                   </div>
 
-                  <div className="rounded-[22px] border border-emerald-200/70 bg-emerald-50 px-4 py-4 dark:border-emerald-500/20 dark:bg-emerald-500/10">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
+                  <div className="rounded-[20px] border border-emerald-200/70 bg-emerald-50 px-4 py-3.5 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
                       Top Category
                     </div>
-                    <div className="mt-2 text-[1.05rem] font-semibold text-slate-950 dark:text-white">
+                    <div className="mt-2 text-[1rem] font-semibold text-slate-950 dark:text-white">
                       {topCategory?.name ?? '—'}
                     </div>
-                    <p className="mt-1 text-[13px] text-slate-600 dark:text-slate-300">
+                    <p className="mt-1 text-[12px] text-slate-600 dark:text-slate-300">
                       {topCategory
                         ? `${formatCurrency(Number(topCategory.value))} generated in the selected period.`
                         : 'No category revenue recorded in the selected period.'}
                     </p>
                   </div>
 
-                  <div className="rounded-[22px] border border-amber-200/70 bg-amber-50 px-4 py-4 dark:border-amber-500/20 dark:bg-amber-500/10">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
+                  <div className="rounded-[20px] border border-amber-200/70 bg-amber-50 px-4 py-3.5 dark:border-amber-500/20 dark:bg-amber-500/10">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
                       Order Mix
                     </div>
-                    <div className="mt-2 text-[1.05rem] font-semibold text-slate-950 dark:text-white">
+                    <div className="mt-2 text-[1rem] font-semibold text-slate-950 dark:text-white">
                       {leadingStatus ? `${toTitleCase(leadingStatus.name)} leads` : '—'}
                     </div>
-                    <p className="mt-1 text-[13px] text-slate-600 dark:text-slate-300">
+                    <p className="mt-1 text-[12px] text-slate-600 dark:text-slate-300">
                       {leadingStatus
                         ? `${leadingStatus.value.toLocaleString()} orders in the largest status bucket.`
                         : 'No order status data available for the selected period.'}
@@ -243,11 +251,11 @@ export default function OverviewPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-white/8 dark:bg-white/[0.03]">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-400">
+                <div className="mt-4 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3.5 dark:border-white/8 dark:bg-white/[0.03]">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-400">
                     Store Health
                   </p>
-                  <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
+                  <p className="mt-2 text-[12px] leading-6 text-slate-700 dark:text-slate-200">
                     Revenue and demand are being led by{' '}
                     <span className="font-semibold text-slate-950 dark:text-white">
                       {topCategory?.name ?? 'the current top category'}
@@ -267,15 +275,15 @@ export default function OverviewPage() {
             </div>
           </section>
 
-          <section className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+          <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
             <TopProductsChart data={topProductsData} />
             <SalesByCategoryChart data={categoryData} />
             <OrderStatusChart data={statusData} />
           </section>
 
-          <section className="grid grid-cols-1 gap-5 2xl:grid-cols-2">
-            <LowStockTable items={lowStock} />
-            <RecentSalesTable items={recentSales} />
+          <section className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
+            <SalesByRegionChart data={regionData} />
+            <SalesByCustomerTypeChart data={customerTypeData} />
           </section>
         </div>
       )}

@@ -17,6 +17,7 @@ class CustomerFactory extends Factory
             'phone' => fake()->numerify('+1-###-###-####'),
             'customer_type' => 'retail',
             'city' => 'Norman',
+            'state' => 'Oklahoma',
             'country' => 'USA',
         ];
     }
@@ -25,6 +26,7 @@ class CustomerFactory extends Factory
     {
         return $this->state(fn () => [
             'city' => 'Norman',
+            'state' => 'Oklahoma',
             'country' => 'USA',
         ]);
     }
@@ -48,27 +50,33 @@ class CustomerFactory extends Factory
 
         return $this->state(fn () => [
             'city' => fake()->randomElement($cities),
+            'state' => 'Oklahoma',
             'country' => 'USA',
         ]);
     }
 
     public function outsideOklahoma(): static
     {
-        $cities = [
-            'Dallas',
-            'Fort Worth',
-            'Wichita',
-            'Fayetteville',
-            'Kansas City',
-            'Amarillo',
-            'Little Rock',
-            'Bentonville',
+        $locations = [
+            ['city' => 'Dallas', 'state' => 'Texas'],
+            ['city' => 'Fort Worth', 'state' => 'Texas'],
+            ['city' => 'Wichita', 'state' => 'Kansas'],
+            ['city' => 'Fayetteville', 'state' => 'Arkansas'],
+            ['city' => 'Kansas City', 'state' => 'Missouri'],
+            ['city' => 'Amarillo', 'state' => 'Texas'],
+            ['city' => 'Little Rock', 'state' => 'Arkansas'],
+            ['city' => 'Bentonville', 'state' => 'Arkansas'],
         ];
 
-        return $this->state(fn () => [
-            'city' => fake()->randomElement($cities),
-            'country' => 'USA',
-        ]);
+        return $this->state(function () use ($locations) {
+            $location = fake()->randomElement($locations);
+
+            return [
+                'city' => $location['city'],
+                'state' => $location['state'],
+                'country' => 'USA',
+            ];
+        });
     }
 
     public function business(): static
