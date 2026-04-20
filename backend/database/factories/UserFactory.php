@@ -41,4 +41,27 @@ class UserFactory extends Factory
             'email_verified_at' => null,
         ]);
     }
+
+    /**
+     * Indicate that the user is an admin.
+     */
+    public function admin(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => 'admin',
+        ])->afterCreating(function ($user) {
+            $adminRole = \App\Models\Role::firstOrCreate(
+                ['code' => 'admin'],
+                ['name' => 'Administrator']
+            );
+
+            $employee = \App\Models\Employee::factory()->create([
+                'email' => 'emp-' . $user->id . '@kinetodesk.local',
+                'first_name' => explode(' ', $user->name)[0] ?? 'Admin',
+                'last_name' => explode(' ', $user->name)[1] ?? 'User',
+                'role_id' => $adminRole->id,
+            ]);
+            $user->update(['employee_id' => $employee->id]);
+        });
+    }
 }

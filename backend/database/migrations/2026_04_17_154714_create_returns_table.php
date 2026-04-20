@@ -16,9 +16,11 @@ return new class extends Migration
             $table->string('return_number', 50)->unique();
             $table->foreignId('order_id')->constrained('orders')->restrictOnDelete();
             $table->foreignId('customer_id')->constrained('customers')->restrictOnDelete();
-            $table->enum('status', ['requested', 'approved', 'rejected', 'received', 'refunded', 'replaced'])->default('requested');
+            $table->enum('status', ['initiated', 'approved', 'rejected', 'received', 'refunded', 'exchanged', 'replaced'])->default('initiated');
             $table->text('reason');
-            $table->dateTime('return_date');
+            $table->decimal('refund_amount', 12, 2)->nullable();
+            $table->text('notes')->nullable();
+            $table->dateTime('return_date')->nullable();
             $table->timestamps();
 
             $table->index(['order_id', 'return_date']);
