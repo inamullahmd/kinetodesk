@@ -20,12 +20,12 @@ return new class extends Migration
                 ->cascadeOnDelete()
                 ->restrictOnDelete();
 
-            $table->string('spec_key');
+            $table->string('spec_name');
             $table->string('spec_value');
             $table->timestamps();
 
             # Adding index for faster lookups by product_id and spec_key
-            $table->index(['product_id', 'spec_key']);
+            $table->index(['product_id', 'spec_name']);
         });
     }
 

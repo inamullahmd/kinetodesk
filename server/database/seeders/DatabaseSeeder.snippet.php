@@ -1,0 +1,24 @@
+<?php
+
+$this->call([
+    EmployeesSeeder::class,
+    CategoriesSeeder::class,
+    BrandsSeeder::class,
+    SuppliersSeeder::class,
+    CustomersSeeder::class,
+    ProductsSeeder::class,
+    ProductSpecsSeeder::class,
+    SupplierProductsSeeder::class,
+    PurchaseOrdersSeeder::class,
+    PurchaseOrderItemsSeeder::class,
+    StockBatchesSeeder::class,
+    StockMovementsSeeder::class,
+    SerialNumbersSeeder::class,
+    SalesOrdersSeeder::class,
+    SalesOrderItemsSeeder::class,
+    SalesItemAllocationsSeeder::class,
+    PaymentsSeeder::class,
+    ReturnsSeeder::class,
+    ReturnItemsSeeder::class,
+    CommissionPayoutsSeeder::class,
+]);
