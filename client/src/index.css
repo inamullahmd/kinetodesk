@@ -1,0 +1,12 @@
+@import url('https://fonts.googleapis.com/css2?family=Elms+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Chango&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Special+Elite&display=swap');
+@import "tailwindcss";
+
+:root {
+  font-family: "Elms Sans", sans-serif;
+}
+
+body {
+  font-family: "Elms Sans", sans-serif;
+}

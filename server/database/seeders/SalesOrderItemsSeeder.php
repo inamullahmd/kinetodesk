@@ -2,13 +2,17 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\Product;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderItem;
+use Carbon\Carbon;
+use Database\Seeders\Concerns\SeedsTimelineWindow;
+use Illuminate\Database\Seeder;
 
 class SalesOrderItemsSeeder extends Seeder
 {
+    use SeedsTimelineWindow;
+
     public function run(): void
     {
         $orders = SalesOrder::with(['customer'])->get();
@@ -19,21 +23,24 @@ class SalesOrderItemsSeeder extends Seeder
             }
 
             $itemsCount = $order->customer?->customer_type === 'business'
-                ? rand(3, 12)
-                : rand(1, 5);
+                ? random_int(3, 10)
+                : random_int(1, 4);
 
             $products = Product::where('is_active', true)
                 ->inRandomOrder()
                 ->take($itemsCount)
                 ->get();
 
+            $growthFactor = $this->growthFactorForDate(Carbon::parse($order->ordered_at), 0.92, 1.18);
+
             foreach ($products as $product) {
-                $qty = $this->qtyForCustomerType(
+                $baseQty = $this->qtyForCustomerType(
                     $order->customer?->customer_type ?? 'individual',
                     $product->category?->name
                 );
+                $qty = max(1, (int) round($baseQty * $growthFactor));
 
-                $unitPrice = $this->extractRetailPrice($product->description) ?? rand(20, 1500);
+                $unitPrice = $this->extractRetailPrice($product->description) ?? random_int(20, 1500);
                 $costBasis = round($unitPrice / 1.55, 2);
                 $minAllowedPrice = round($costBasis * 1.4, 2);
 
@@ -85,15 +92,15 @@ class SalesOrderItemsSeeder extends Seeder
     {
         if ($type === 'business') {
             return match ($category) {
-                'Cables & Adapters', 'Memory Cards', 'Thermal Solutions' => rand(10, 60),
-                'Keyboards', 'Mice', 'Audio', 'Monitors' => rand(3, 15),
-                default => rand(2, 10),
+                'Cables & Adapters', 'Memory Cards', 'Thermal Solutions' => random_int(8, 40),
+                'Keyboards', 'Mice', 'Audio', 'Monitors' => random_int(3, 12),
+                default => random_int(2, 8),
             };
         }
 
         return match ($category) {
-            'Cables & Adapters', 'Memory Cards', 'Thermal Solutions' => rand(1, 6),
-            default => rand(1, 3),
+            'Cables & Adapters', 'Memory Cards', 'Thermal Solutions' => random_int(1, 5),
+            default => random_int(1, 3),
         };
     }
 
@@ -105,7 +112,7 @@ class SalesOrderItemsSeeder extends Seeder
             $base += ($unitPrice * $qty) * 0.05;
         }
 
-        if ($channel === 'online' && rand(1, 100) <= 18) {
+        if ($channel === 'online' && random_int(1, 100) <= 18) {
             $base += ($unitPrice * $qty) * 0.03;
         }
 

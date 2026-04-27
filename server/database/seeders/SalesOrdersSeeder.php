@@ -2,14 +2,17 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\Customer;
 use App\Models\Employee;
 use App\Models\SalesOrder;
 use Carbon\Carbon;
+use Database\Seeders\Concerns\SeedsTimelineWindow;
+use Illuminate\Database\Seeder;
 
 class SalesOrdersSeeder extends Seeder
 {
+    use SeedsTimelineWindow;
+
     public function run(): void
     {
         $customers = Customer::where('is_active', true)->get();
@@ -29,7 +32,7 @@ class SalesOrdersSeeder extends Seeder
                 [$orderedAt, $completedAt, $status, $paymentStatus] = $this->generateTimelineAndStatus($channel);
 
                 $employeeId = match ($channel) {
-                    'online' => rand(1, 100) <= 15 ? optional($employees->random())->id : null,
+                    'online' => random_int(1, 100) <= 18 ? optional($employees->random())->id : null,
                     'phone', 'in_store' => optional($employees->random())->id,
                     default => null,
                 };
@@ -44,7 +47,7 @@ class SalesOrdersSeeder extends Seeder
                     'subtotal' => 0,
                     'discount_amount' => 0,
                     'tax_amount' => 0,
-                    'shipping_fee' => $channel === 'in_store' ? 0 : rand(0, 60),
+                    'shipping_fee' => $channel === 'in_store' ? 0 : random_int(0, 60),
                     'grand_total' => 0,
                     'contact_name' => $customer->customer_type === 'business'
                         ? ($customer->business_name ?? 'Business Customer')
@@ -69,9 +72,9 @@ class SalesOrdersSeeder extends Seeder
     private function salesOrderCountForCustomer(string $customerType): int
     {
         return match ($customerType) {
-            'business' => rand(12, 36),
-            'individual' => rand(1, 8),
-            default => rand(1, 5),
+            'business' => random_int(12, 30),
+            'individual' => random_int(2, 7),
+            default => random_int(1, 5),
         };
     }
 
@@ -88,20 +91,20 @@ class SalesOrdersSeeder extends Seeder
 
     private function generateTimelineAndStatus(string $channel): array
     {
-        $today = Carbon::today();
-        $roll = rand(1, 100);
+        $seedEnd = $this->seedWindowEnd();
+        $roll = random_int(1, 1000);
 
-        if ($roll <= 12) {
+        if ($roll <= 20) {
             $status = 'pending';
-        } elseif ($roll <= 24) {
+        } elseif ($roll <= 45) {
             $status = 'confirmed';
-        } elseif ($roll <= 35 && $channel !== 'in_store') {
+        } elseif ($roll <= 80 && $channel !== 'in_store') {
             $status = 'shipped';
-        } elseif ($roll <= 84) {
+        } elseif ($roll <= 940) {
             $status = 'delivered';
-        } elseif ($roll <= 91) {
+        } elseif ($roll <= 975) {
             $status = 'cancelled';
-        } elseif ($roll <= 96) {
+        } elseif ($roll <= 993) {
             $status = 'returned';
         } else {
             $status = 'refunded';
@@ -109,51 +112,51 @@ class SalesOrdersSeeder extends Seeder
 
         switch ($status) {
             case 'pending':
-                $orderedAt = rand(1, 100) <= 70
-                    ? Carbon::today()->subDays(rand(0, 5))
-                    : Carbon::today()->addDays(rand(0, 7));
+                $orderedAt = $seedEnd->copy()->subDays(random_int(0, 4))->setTime(random_int(9, 18), random_int(0, 59));
                 $completedAt = null;
-                $paymentStatus = rand(1, 100) <= 78 ? 'unpaid' : 'paid';
+                $paymentStatus = random_int(1, 100) <= 90 ? 'unpaid' : 'paid';
                 break;
 
             case 'confirmed':
-                $orderedAt = Carbon::today()->subDays(rand(0, 10));
+                $orderedAt = $seedEnd->copy()->subDays(random_int(1, 7))->setTime(random_int(9, 18), random_int(0, 59));
                 $completedAt = null;
-                $paymentStatus = rand(1, 100) <= 80 ? 'paid' : 'unpaid';
+                $paymentStatus = random_int(1, 100) <= 82 ? 'paid' : 'unpaid';
                 break;
 
             case 'shipped':
-                $orderedAt = Carbon::today()->subDays(rand(1, 12));
+                $orderedAt = $seedEnd->copy()->subDays(random_int(2, 10))->setTime(random_int(9, 18), random_int(0, 59));
                 $completedAt = null;
                 $paymentStatus = 'paid';
                 break;
 
             case 'delivered':
-                $orderedAt = Carbon::today()->subDays(rand(5, 1095));
-                $completedAt = (clone $orderedAt)->addDays($channel === 'in_store' ? rand(0, 1) : rand(1, 12));
+                $orderedAt = $this->pickWeightedDate(3);
+                $completedAt = $this->clampToSeedWindow(
+                    $orderedAt->copy()->addDays($channel === 'in_store' ? random_int(0, 1) : random_int(1, 10))
+                );
                 $paymentStatus = 'paid';
                 break;
 
             case 'cancelled':
-                $orderedAt = Carbon::today()->subDays(rand(1, 800));
+                $orderedAt = $this->pickWeightedDate(10);
                 $completedAt = null;
-                $paymentStatus = rand(1, 100) <= 18 ? 'paid' : 'unpaid';
+                $paymentStatus = random_int(1, 100) <= 12 ? 'paid' : 'unpaid';
                 break;
 
             case 'returned':
-                $orderedAt = Carbon::today()->subDays(rand(20, 730));
-                $completedAt = (clone $orderedAt)->addDays(rand(2, 15));
+                $orderedAt = $this->pickWeightedDate(20);
+                $completedAt = $this->clampToSeedWindow($orderedAt->copy()->addDays(random_int(2, 12)));
                 $paymentStatus = 'paid';
                 break;
 
             case 'refunded':
-                $orderedAt = Carbon::today()->subDays(rand(20, 730));
-                $completedAt = (clone $orderedAt)->addDays(rand(2, 20));
+                $orderedAt = $this->pickWeightedDate(25);
+                $completedAt = $this->clampToSeedWindow($orderedAt->copy()->addDays(random_int(3, 14)));
                 $paymentStatus = 'refunded';
                 break;
 
             default:
-                $orderedAt = Carbon::today()->subDays(rand(1, 365));
+                $orderedAt = $this->pickWeightedDate();
                 $completedAt = null;
                 $paymentStatus = 'unpaid';
                 break;

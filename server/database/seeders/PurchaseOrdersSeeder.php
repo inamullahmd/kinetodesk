@@ -2,13 +2,15 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use App\Models\Supplier;
 use App\Models\PurchaseOrder;
-use Carbon\Carbon;
+use App\Models\Supplier;
+use Database\Seeders\Concerns\SeedsTimelineWindow;
+use Illuminate\Database\Seeder;
 
 class PurchaseOrdersSeeder extends Seeder
 {
+    use SeedsTimelineWindow;
+
     public function run(): void
     {
         $suppliers = Supplier::where('is_active', true)->get();
@@ -51,22 +53,22 @@ class PurchaseOrdersSeeder extends Seeder
     private function purchaseOrderCountForSupplier(?string $country): int
     {
         return match ($country) {
-            'USA' => rand(18, 34),
-            'Canada', 'United Kingdom', 'Germany', 'Australia' => rand(10, 22),
-            default => rand(7, 18),
+            'USA' => random_int(16, 28),
+            'Canada', 'United Kingdom', 'Germany', 'Australia' => random_int(10, 20),
+            default => random_int(7, 16),
         };
     }
 
     private function generateTimeline(): array
     {
-        $today = Carbon::today();
-        $roll = rand(1, 100);
+        $seedEnd = $this->seedWindowEnd();
+        $roll = random_int(1, 1000);
 
-        if ($roll <= 56) {
+        if ($roll <= 880) {
             $status = 'fulfilled';
-        } elseif ($roll <= 74) {
+        } elseif ($roll <= 940) {
             $status = 'transit';
-        } elseif ($roll <= 92) {
+        } elseif ($roll <= 980) {
             $status = 'issued';
         } else {
             $status = 'cancelled';
@@ -74,45 +76,37 @@ class PurchaseOrdersSeeder extends Seeder
 
         switch ($status) {
             case 'fulfilled':
-                $orderedAt = Carbon::today()->subDays(rand(20, 1095));
-                $expectedAt = (clone $orderedAt)->addDays(rand(5, 32));
-                $receivedAt = (clone $expectedAt)->addDays(rand(-1, 6));
-                if ($receivedAt->gt($today)) {
-                    $receivedAt = (clone $today)->subDays(rand(1, 3));
+                $orderedAt = $this->pickWeightedDate(12)->startOfDay();
+                $expectedAt = $this->clampToSeedWindow($orderedAt->copy()->addDays(random_int(5, 24)))->endOfDay();
+                $receivedAt = $this->clampToSeedWindow(
+                    $expectedAt->copy()->addDays(random_int(-1, 4))
+                )->endOfDay();
+                if ($receivedAt->lt($orderedAt)) {
+                    $receivedAt = $orderedAt->copy()->addDays(random_int(2, 8))->endOfDay();
                 }
                 break;
 
             case 'transit':
-                $orderedAt = Carbon::today()->subDays(rand(1, 45));
-                $expectedAt = (clone $orderedAt)->addDays(rand(5, 28));
-                if ($expectedAt->lte($today)) {
-                    $expectedAt = (clone $today)->addDays(rand(1, 12));
-                }
+                $orderedAt = $seedEnd->copy()->subDays(random_int(8, 20))->startOfDay();
+                $expectedAt = $this->clampToSeedWindow($orderedAt->copy()->addDays(random_int(5, 12)))->endOfDay();
                 $receivedAt = null;
                 break;
 
             case 'issued':
-                if (rand(1, 100) <= 30) {
-                    $orderedAt = Carbon::today()->addDays(rand(0, 14));
-                } else {
-                    $orderedAt = Carbon::today()->subDays(rand(0, 21));
-                }
-                $expectedAt = (clone $orderedAt)->addDays(rand(7, 35));
-                if ($expectedAt->lte($today)) {
-                    $expectedAt = (clone $today)->addDays(rand(3, 18));
-                }
+                $orderedAt = $seedEnd->copy()->subDays(random_int(0, 8))->startOfDay();
+                $expectedAt = $this->clampToSeedWindow($orderedAt->copy()->addDays(random_int(4, 10)))->endOfDay();
                 $receivedAt = null;
                 break;
 
             case 'cancelled':
-                $orderedAt = Carbon::today()->subDays(rand(3, 900));
-                $expectedAt = (clone $orderedAt)->addDays(rand(5, 24));
+                $orderedAt = $this->pickWeightedDate(15)->startOfDay();
+                $expectedAt = $this->clampToSeedWindow($orderedAt->copy()->addDays(random_int(4, 18)))->endOfDay();
                 $receivedAt = null;
                 break;
 
             default:
-                $orderedAt = Carbon::today()->subDays(rand(5, 100));
-                $expectedAt = (clone $orderedAt)->addDays(rand(5, 20));
+                $orderedAt = $this->pickWeightedDate()->startOfDay();
+                $expectedAt = $this->clampToSeedWindow($orderedAt->copy()->addDays(random_int(5, 20)))->endOfDay();
                 $receivedAt = null;
                 break;
         }

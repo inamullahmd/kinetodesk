@@ -27,14 +27,23 @@ class ReturnItemsSeeder extends Seeder
             }
 
             $selected = $items->random(min(rand(1, 2), $items->count()));
+            $hasRestockedItem = false;
 
             foreach ($selected as $item) {
                 $qty = rand(1, $item->qty);
                 $refundAmount = round($qty * $item->final_unit_price, 2);
-                $condition = collect(['sealed', 'opened', 'used', 'damaged'])->random();
-                $action = $returnRecord->restock ? 'restock' : 'scrap';
 
-                ReturnItem::create([
+                // damaged should be less common, but only damaged gets scrapped
+                $condition = collect([
+                    'sealed',
+                    'opened',
+                    'used',
+                    'damaged',
+                ])->random();
+
+                $action = $condition === 'damaged' ? 'scrap' : 'restock';
+
+                $returnItem = ReturnItem::create([
                     'return_id' => $returnRecord->id,
                     'sales_order_item_id' => $item->id,
                     'qty' => $qty,
@@ -44,7 +53,9 @@ class ReturnItemsSeeder extends Seeder
                     'notes' => 'Seeded return item',
                 ]);
 
-                if ($returnRecord->restock) {
+                if ($action === 'restock') {
+                    $hasRestockedItem = true;
+
                     $batch = StockBatch::where('product_id', $item->product_id)
                         ->orderByDesc('received_at')
                         ->first();
@@ -57,7 +68,7 @@ class ReturnItemsSeeder extends Seeder
                             'stock_batch_id' => $batch->id,
                             'movement_type' => 'return_from_customer',
                             'reference_type' => 'return_item',
-                            'reference_id' => $item->id,
+                            'reference_id' => $returnItem->id,
                             'qty_change' => $qty,
                             'unit_cost' => $batch->unit_cost,
                             'notes' => 'Customer return restocked',
@@ -71,7 +82,9 @@ class ReturnItemsSeeder extends Seeder
                                 ->get();
 
                             foreach ($serials as $serial) {
-                                $serial->update(['status' => 'returned']);
+                                $serial->update([
+                                    'status' => 'returned',
+                                ]);
                             }
                         }
                     }
@@ -80,6 +93,7 @@ class ReturnItemsSeeder extends Seeder
 
             $returnRecord->update([
                 'refund_amount' => round((float) $returnRecord->items()->sum('refund_amount'), 2),
+                'restock' => $hasRestockedItem,
             ]);
         }
     }

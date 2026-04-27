@@ -2,12 +2,12 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use App\Models\SalesOrderItem;
 use App\Models\SalesItemAllocation;
+use App\Models\SalesOrderItem;
+use App\Models\SerialNumber;
 use App\Models\StockBatch;
 use App\Models\StockMovement;
-use App\Models\SerialNumber;
+use Illuminate\Database\Seeder;
 
 class SalesItemAllocationsSeeder extends Seeder
 {
@@ -15,7 +15,7 @@ class SalesItemAllocationsSeeder extends Seeder
     {
         SalesOrderItem::with([
                 'product:id,is_serialized',
-                'salesOrder:id,ordered_at',
+                'salesOrder:id,ordered_at,status',
             ])
             ->select([
                 'id',
@@ -26,6 +26,12 @@ class SalesItemAllocationsSeeder extends Seeder
             ->chunkById(200, function ($items) {
                 foreach ($items as $item) {
                     if (SalesItemAllocation::where('sales_order_item_id', $item->id)->exists()) {
+                        continue;
+                    }
+
+                    $orderStatus = $item->salesOrder?->status;
+
+                    if (in_array($orderStatus, ['pending', 'cancelled'], true)) {
                         continue;
                     }
 
@@ -72,7 +78,7 @@ class SalesItemAllocationsSeeder extends Seeder
                             'qty_change' => -1 * $allocate,
                             'unit_cost' => $batch->unit_cost,
                             'notes' => 'Seeded sale allocation',
-                            'moved_at' => $item->salesOrder?->ordered_at ?? now(),
+                            'moved_at' => $item->salesOrder?->ordered_at,
                         ]);
 
                         if ($item->product?->is_serialized) {

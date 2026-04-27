@@ -2,14 +2,18 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Models\SupplierProduct;
+use Carbon\Carbon;
+use Database\Seeders\Concerns\SeedsTimelineWindow;
+use Illuminate\Database\Seeder;
 
 class PurchaseOrderItemsSeeder extends Seeder
 {
+    use SeedsTimelineWindow;
+
     public function run(): void
     {
         $purchaseOrders = PurchaseOrder::all();
@@ -19,21 +23,24 @@ class PurchaseOrderItemsSeeder extends Seeder
                 continue;
             }
 
+            $growthFactor = $this->growthFactorForDate(Carbon::parse($purchaseOrder->ordered_at), 0.95, 1.30);
+
             $supplierProducts = SupplierProduct::with('product')
                 ->where('supplier_id', $purchaseOrder->supplier_id)
                 ->where('is_active', true)
                 ->inRandomOrder()
-                ->take(rand(4, 14))
+                ->take(random_int(4, 14))
                 ->get();
 
             if ($supplierProducts->isEmpty()) {
                 $fallbackProducts = Product::where('is_active', true)
                     ->inRandomOrder()
-                    ->take(rand(4, 10))
+                    ->take(random_int(4, 10))
                     ->get();
 
                 foreach ($fallbackProducts as $product) {
-                    $qty = $this->qtyForCategory($product->category?->name);
+                    $baseQty = $this->qtyForCategory($product->category?->name);
+                    $qty = max(1, (int) round($baseQty * $growthFactor));
                     $unitCost = round($this->retailPrice($product) * $this->costMultiplier($product->category?->name), 2);
                     $lineTotal = round($qty * $unitCost, 2);
 
@@ -47,7 +54,11 @@ class PurchaseOrderItemsSeeder extends Seeder
                 }
             } else {
                 foreach ($supplierProducts as $supplierProduct) {
-                    $qty = max($supplierProduct->min_order_qty ?? 1, $this->qtyForCategory($supplierProduct->product?->category?->name));
+                    $baseQty = $this->qtyForCategory($supplierProduct->product?->category?->name);
+                    $qty = max(
+                        $supplierProduct->min_order_qty ?? 1,
+                        (int) round($baseQty * $growthFactor)
+                    );
                     $unitCost = round((float) ($supplierProduct->last_cost ?? ($this->retailPrice($supplierProduct->product) * 0.65)), 2);
                     $lineTotal = round($qty * $unitCost, 2);
 
@@ -63,8 +74,8 @@ class PurchaseOrderItemsSeeder extends Seeder
 
             $subtotal = round((float) $purchaseOrder->items()->sum('line_total'), 2);
             $taxAmount = round($subtotal * 0.08, 2);
-            $shipping = $purchaseOrder->status === 'cancelled' ? 0 : round(rand(20, 280), 2);
-            $other = $purchaseOrder->status === 'cancelled' ? 0 : round(rand(0, 65), 2);
+            $shipping = $purchaseOrder->status === 'cancelled' ? 0 : round(random_int(20, 280), 2);
+            $other = $purchaseOrder->status === 'cancelled' ? 0 : round(random_int(0, 65), 2);
 
             $purchaseOrder->update([
                 'subtotal' => $subtotal,
@@ -79,25 +90,25 @@ class PurchaseOrderItemsSeeder extends Seeder
     private function qtyForCategory(?string $category): int
     {
         return match ($category) {
-            'Cables & Adapters', 'Memory Cards', 'Thermal Solutions' => rand(20, 100),
-            'Keyboards', 'Mice', 'Audio', 'Case Fans', 'Tools & Equipment' => rand(8, 35),
-            'Operating Systems', 'Productivity Software', 'Security Software' => rand(5, 25),
-            'Laptops', 'Desktop PCs', 'Tablets', 'Handhelds', 'Monitors' => rand(1, 10),
-            default => rand(3, 24),
+            'Cables & Adapters', 'Memory Cards', 'Thermal Solutions' => random_int(24, 110),
+            'Keyboards', 'Mice', 'Audio', 'Case Fans', 'Tools & Equipment' => random_int(10, 40),
+            'Operating Systems', 'Productivity Software', 'Security Software' => random_int(6, 24),
+            'Laptops', 'Desktop PCs', 'Tablets', 'Handhelds', 'Monitors' => random_int(2, 10),
+            default => random_int(4, 26),
         };
     }
 
     private function retailPrice(?Product $product): float
     {
         if (!$product || !$product->description) {
-            return rand(25, 1200);
+            return random_int(25, 1200);
         }
 
         if (preg_match('/Retail price approx:\s*\$([0-9,]+(?:\.[0-9]{1,2})?)/i', $product->description, $matches)) {
             return (float) str_replace(',', '', $matches[1]);
         }
 
-        return rand(25, 1200);
+        return random_int(25, 1200);
     }
 
     private function costMultiplier(?string $category): float

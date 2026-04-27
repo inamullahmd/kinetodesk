@@ -31,7 +31,7 @@ class ReturnsSeeder extends Seeder
                     'Defective product',
                 ])->random(),
                 'refund_amount' => $order->grand_total,
-                'restock' => rand(1, 100) <= 70,
+                'restock' => false, // will be recalculated in ReturnItemsSeeder
             ]);
 
             $counter++;
