@@ -22,7 +22,6 @@ type LinkItemProps = {
   label: string
   to?: string
   badge?: string
-  active?: boolean
 }
 
 type ExpandableItemProps = {
@@ -46,16 +45,48 @@ function SidebarLink({
   label,
   to,
   badge,
-  active = false,
 }: LinkItemProps) {
-  const content = (
-    <>
-      <Icon
-        size={20}
-        strokeWidth={1.9}
-        className={active ? 'text-[#6C3BFF]' : 'text-slate-500'}
-      />
+  if (to) {
+    return (
+      <NavLink
+        to={to}
+        end
+        className={({ isActive }) =>
+          [
+            'flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left transition-all',
+            isActive
+              ? 'bg-[#F2F0FF] text-[#6C3BFF]'
+              : 'text-slate-700 hover:bg-slate-50',
+          ].join(' ')
+        }
+      >
+        {({ isActive }) => (
+          <>
+            <Icon
+              size={20}
+              strokeWidth={1.9}
+              className={isActive ? 'text-[#6C3BFF]' : 'text-slate-500'}
+            />
 
+            <span className="flex-1 text-[15px] font-medium">{label}</span>
+
+            {badge ? (
+              <span className="rounded-full bg-[#EAF7EA] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#4CAF50]">
+                {badge}
+              </span>
+            ) : null}
+          </>
+        )}
+      </NavLink>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      className="flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-slate-700 transition-all hover:bg-slate-50"
+    >
+      <Icon size={20} strokeWidth={1.9} className="text-slate-500" />
       <span className="flex-1 text-[15px] font-medium">{label}</span>
 
       {badge ? (
@@ -63,27 +94,6 @@ function SidebarLink({
           {badge}
         </span>
       ) : null}
-    </>
-  )
-
-  const className = [
-    'flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left transition-all',
-    active
-      ? 'bg-[#F2F0FF] text-[#6C3BFF]'
-      : 'text-slate-700 hover:bg-slate-50',
-  ].join(' ')
-
-  if (to) {
-    return (
-      <NavLink to={to} end className={() => className}>
-        {content}
-      </NavLink>
-    )
-  }
-
-  return (
-    <button type="button" className={className}>
-      {content}
     </button>
   )
 }
@@ -131,20 +141,13 @@ function SidebarExpandable({
 
 function SidebarSubLink({
   label,
-  active = false,
 }: {
   label: string
-  active?: boolean
 }) {
   return (
     <button
       type="button"
-      className={[
-        'block w-full rounded-lg px-3 py-2.5 text-left text-[14px] font-medium transition-all',
-        active
-          ? 'bg-[#F2F0FF] text-[#6C3BFF]'
-          : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700',
-      ].join(' ')}
+      className="block w-full rounded-lg px-3 py-2.5 text-left text-[14px] font-medium text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-700"
     >
       {label}
     </button>
@@ -156,8 +159,8 @@ export default function AppSidebar() {
     <aside className="hidden w-[290px] shrink-0 border-r border-slate-200 bg-white lg:flex lg:flex-col">
       <div className="px-5 pb-4 pt-6">
         <div
-          className="text-[26px] leading-none font-bold text-slate-950"
-          style={{ fontFamily: '"Special Elite", cursive' }}
+          className="text-[26px] leading-none text-slate-950"
+          style={{ fontFamily: '"Chango", cursive' }}
         >
           kinetodesk.
         </div>
@@ -175,7 +178,6 @@ export default function AppSidebar() {
             icon={LayoutDashboard}
             label="Dashboard"
             to="/dashboard"
-            active
           />
 
           <SidebarExpandable
@@ -188,7 +190,12 @@ export default function AppSidebar() {
             <SidebarSubLink label="Stock Movements" />
           </SidebarExpandable>
 
-          <SidebarLink icon={ShoppingCart} label="Orders" />
+          <SidebarLink
+            icon={ShoppingCart}
+            label="Orders"
+            to="/orders"
+          />
+
           <SidebarLink icon={CalendarDays} label="Calendar" />
           <SidebarLink icon={UserCircle2} label="User Profile" />
           <SidebarLink icon={ClipboardList} label="Tasks" />

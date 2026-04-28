@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\api\DashboardController;
+use App\Http\Controllers\api\OrdersController;
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -19,3 +20,6 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 });
 
 Route::get('/dashboard', DashboardController::class);
+
+Route::get('/orders/stats', [OrdersController::class, 'stats']);
+Route::get('/orders', [OrdersController::class, 'index']);

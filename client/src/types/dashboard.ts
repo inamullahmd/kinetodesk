@@ -3,6 +3,21 @@ export type RevenuePoint = {
   revenue: number | string
 }
 
+export type ProfitPoint = {
+  month: string
+  profit: number | string
+}
+
+export type QuarterRevenuePoint = {
+  quarter: string
+  revenue: number | string
+}
+
+export type QuarterProfitPoint = {
+  quarter: string
+  profit: number | string
+}
+
 export type RevenueComparison = {
   current_month_revenue: number | string
   previous_month_revenue: number | string
@@ -10,12 +25,20 @@ export type RevenueComparison = {
 }
 
 export type QuarterComparison = {
-  current_quarter_start: string
-  current_quarter_end: string
-  previous_quarter_start: string
-  previous_quarter_end: string
   current_quarter_revenue: number | string
   previous_quarter_revenue: number | string
+  percentage_change: number | null
+}
+
+export type ProfitComparison = {
+  current_month_profit: number | string
+  previous_month_profit: number | string
+  percentage_change: number | null
+}
+
+export type QuarterProfitComparison = {
+  current_quarter_profit: number | string
+  previous_quarter_profit: number | string
   percentage_change: number | null
 }
 
@@ -38,11 +61,6 @@ export type TopEmployee = {
   total_orders: number | string
 }
 
-export type OrdersByStatusItem = {
-  status: string
-  total_orders: number | string
-}
-
 export type LowStockProduct = {
   id: number
   title: string
@@ -54,72 +72,30 @@ export type LowStockProduct = {
   }
 }
 
-export type QuarterRevenuePoint = {
-  quarter: string
-  revenue: number | string
+export type RefundSummary = {
+  refund_count: number
+  refund_value: number | string
 }
-
-export type ProfitComparison = {
-  current_month_start: string
-  current_month_end: string
-  previous_month_start: string
-  previous_month_end: string
-  current_month_profit: number | string
-  previous_month_profit: number | string
-  percentage_change: number | null
-}
-
-export type QuarterProfitComparison = {
-  current_quarter_start: string
-  current_quarter_end: string
-  previous_quarter_start: string
-  previous_quarter_end: string
-  current_quarter_profit: number | string
-  previous_quarter_profit: number | string
-  percentage_change: number | null
-}
-
-
-export type ProfitPoint = {
-  month: string
-  profit: number | string
-}
-
-export type QuarterProfitPoint = {
-  quarter: string
-  profit: number | string
-}
-
-export type StateCount = {
-  state: string
-  count: number
-}
-
 
 export type DashboardResponse = {
   asOfDate: string
 
-  last12MonthsRevenue: RevenuePoint[]
-  last8QuartersRevenue: QuarterRevenuePoint[]
-
-  last12MonthsProfit: ProfitPoint[]
-  last8QuartersProfit: QuarterProfitPoint[]
-
   revenueComparison: RevenueComparison
   quarterComparison: QuarterComparison
-
   profitComparison: ProfitComparison
   quarterProfitComparison: QuarterProfitComparison
-
   currentInventoryValue: number | string
 
+  last12MonthsRevenue: RevenuePoint[]
+  last12MonthsProfit: ProfitPoint[]
+  last8QuartersRevenue: QuarterRevenuePoint[]
+  last8QuartersProfit: QuarterProfitPoint[]
+
   salesByChannel: SalesByChannelItem[]
-  topSellingProducts: TopSellingProduct[]
-  topEmployees: TopEmployee[]
-  ordersByStatus: OrdersByStatusItem[]
   lowStockProducts: LowStockProduct[]
-  customerBusinessMap: {
-    customers: StateCount[]
-    businesses: StateCount[]
-  }
+
+  topSellingProduct: TopSellingProduct | null
+  topEmployee: TopEmployee | null
+  pendingOrdersCount: number
+  refundSummary: RefundSummary
 }

@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import DashboardLayout from './layouts/DashboardLayout'
 import OverviewPage from './pages/dashboard/OverviewPage'
+import OrdersPage from './pages/orders/OrdersPage'
 
 export default function App() {
   return (
@@ -9,6 +10,7 @@ export default function App() {
 
       <Route element={<DashboardLayout />}>
         <Route path="/dashboard" element={<OverviewPage />} />
+        <Route path="/orders" element={<OrdersPage />} />
       </Route>
     </Routes>
   )
