@@ -140,17 +140,21 @@ trait AppliesMultiColumnSorting
     }
 
     protected function orderByProductStatus(
-        Builder|QueryBuilder $query,
-        string $direction,
-        string $stockExpression = 'stock_qty',
-        string $reorderPointColumn = 'products.reorder_point'
-    ): void {
-        $query->orderByRaw("
-            CASE
-                WHEN COALESCE({$stockExpression}, 0) <= 0 THEN 0
-                WHEN COALESCE({$stockExpression}, 0) <= {$reorderPointColumn} THEN 1
-                ELSE 2
-            END {$direction}
-        ");
-    }
+    Builder|QueryBuilder $query,
+    string $direction,
+    string $stockExpression = 'stock_qty',
+    string|int|float $lowStockThreshold = 5
+): void {
+    $threshold = is_numeric($lowStockThreshold)
+        ? (string) $lowStockThreshold
+        : $lowStockThreshold;
+
+    $query->orderByRaw("
+        CASE
+            WHEN COALESCE({$stockExpression}, 0) <= 0 THEN 0
+            WHEN COALESCE({$stockExpression}, 0) <= {$threshold} THEN 1
+            ELSE 2
+        END {$direction}
+    ");
+}
 }

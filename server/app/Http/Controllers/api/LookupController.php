@@ -4,9 +4,11 @@ namespace App\Http\Controllers\api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
+use App\Models\Employee;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\SalesOrder;
+use App\Models\Supplier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -15,7 +17,7 @@ class LookupController extends Controller
     public function __invoke(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'entity' => ['required', 'string', 'in:sales-orders,purchase-orders,customers,inventory'],
+            'entity' => ['required', 'string', 'in:sales-orders,purchase-orders,customers,inventory,suppliers,employees'],
             'q' => ['required', 'string', 'min:1', 'max:120'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
@@ -29,6 +31,8 @@ class LookupController extends Controller
             'purchase-orders' => $this->purchaseOrders($query, $limit),
             'customers' => $this->customers($query, $limit),
             'inventory' => $this->inventory($query, $limit),
+            'suppliers' => $this->suppliers($query, $limit),
+            'employees' => $this->employees($query, $limit),
         };
 
         return response()->json([
@@ -50,13 +54,13 @@ class LookupController extends Controller
                 $salesOrderQuery
                     ->where('so_number', 'like', $like)
                     ->orWhere('contact_name', 'like', $like)
-                    ->orWhere('contact_email', 'like', $like)
                     ->orWhere('contact_phone', 'like', $like)
                     ->orWhereHas('customer', function ($customerQuery) use ($like) {
                         $customerQuery
                             ->where('business_name', 'like', $like)
                             ->orWhere('first_name', 'like', $like)
                             ->orWhere('last_name', 'like', $like)
+                            ->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", [$like])
                             ->orWhere('email', 'like', $like)
                             ->orWhere('phone', 'like', $like);
                     });
@@ -148,6 +152,7 @@ class LookupController extends Controller
                     ->where('business_name', 'like', $like)
                     ->orWhere('first_name', 'like', $like)
                     ->orWhere('last_name', 'like', $like)
+                    ->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", [$like])
                     ->orWhere('email', 'like', $like)
                     ->orWhere('phone', 'like', $like)
                     ->orWhere('tax_number', 'like', $like)
@@ -207,6 +212,85 @@ class LookupController extends Controller
                     'date' => null,
                     'meta' => $product->category?->name,
                     'detailEndpoint' => "/api/inventory/products/{$product->id}",
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function suppliers(string $query, int $limit): array
+    {
+        $like = '%' . $query . '%';
+
+        return Supplier::query()
+            ->withCount('purchaseOrders')
+            ->where(function ($supplierQuery) use ($like) {
+                $supplierQuery
+                    ->where('name', 'like', $like)
+                    ->orWhere('contact_person', 'like', $like)
+                    ->orWhere('email', 'like', $like)
+                    ->orWhere('phone', 'like', $like)
+                    ->orWhere('website', 'like', $like)
+                    ->orWhere('city', 'like', $like)
+                    ->orWhere('state', 'like', $like)
+                    ->orWhere('country', 'like', $like);
+            })
+            ->orderBy('name')
+            ->limit($limit)
+            ->get()
+            ->map(function (Supplier $supplier) {
+                return [
+                    'entity' => 'suppliers',
+                    'type' => 'supplier',
+                    'id' => $supplier->id,
+                    'label' => $supplier->name,
+                    'title' => $supplier->name,
+                    'subtitle' => trim(implode(' · ', array_filter([$supplier->contact_person, $supplier->email, $supplier->phone]))),
+                    'status' => $supplier->is_active ? 'active' : 'inactive',
+                    'amount' => null,
+                    'date' => null,
+                    'meta' => trim(($supplier->purchase_orders_count ?? 0) . ' purchase orders'),
+                    'detailEndpoint' => "/api/suppliers/{$supplier->id}",
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function employees(string $query, int $limit): array
+    {
+        $like = '%' . $query . '%';
+
+        return Employee::query()
+            ->where(function ($employeeQuery) use ($like) {
+                $employeeQuery
+                    ->where('employee_number', 'like', $like)
+                    ->orWhere('first_name', 'like', $like)
+                    ->orWhere('last_name', 'like', $like)
+                    ->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", [$like])
+                    ->orWhere('email', 'like', $like)
+                    ->orWhere('phone_number', 'like', $like)
+                    ->orWhere('role', 'like', $like);
+            })
+            ->orderBy('last_name')
+            ->orderBy('first_name')
+            ->limit($limit)
+            ->get()
+            ->map(function (Employee $employee) {
+                $displayName = trim(($employee->first_name ?? '') . ' ' . ($employee->last_name ?? '')) ?: 'Unnamed employee';
+
+                return [
+                    'entity' => 'employees',
+                    'type' => 'employee',
+                    'id' => $employee->id,
+                    'label' => $displayName,
+                    'title' => $displayName,
+                    'subtitle' => trim(implode(' · ', array_filter([$employee->employee_number, $employee->email, $employee->phone_number]))),
+                    'status' => $employee->active ? 'active' : 'inactive',
+                    'amount' => null,
+                    'date' => null,
+                    'meta' => ucfirst(str_replace('_', ' ', (string) $employee->role)),
+                    'detailEndpoint' => "/api/employees/{$employee->id}",
                 ];
             })
             ->values()

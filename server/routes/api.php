@@ -6,6 +6,8 @@ use App\Http\Controllers\api\DashboardController;
 use App\Http\Controllers\api\OrdersController;
 use App\Http\Controllers\api\CustomersController;
 use App\Http\Controllers\api\InventoryController;
+use App\Http\Controllers\api\SuppliersController;
+use App\Http\Controllers\api\EmployeesController;
 use App\Http\Controllers\api\LookupController;
 /*
 |--------------------------------------------------------------------------
@@ -35,5 +37,11 @@ Route::get('/inventory/alerts', [InventoryController::class, 'alerts']);
 
 Route::get('/customers', [CustomersController::class, 'index']);
 Route::get('/customers/{id}', [CustomersController::class, 'show']);
+
+Route::get('/suppliers', [SuppliersController::class, 'index']);
+Route::get('/suppliers/{id}', [SuppliersController::class, 'show']);
+
+Route::get('/employees', [EmployeesController::class, 'index']);
+Route::get('/employees/{id}', [EmployeesController::class, 'show']);
 
 Route::get('/lookup', LookupController::class);
