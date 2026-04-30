@@ -51,6 +51,8 @@ export type SalesByChannelItem = {
 export type TopSellingProduct = {
   product_id: number
   product_name: string
+  category_name?: string | null
+  sub_category_name?: string | null
   total_quantity: number | string
 }
 
@@ -64,11 +66,15 @@ export type TopEmployee = {
 export type LowStockProduct = {
   id: number
   title: string
+  internal_sku?: string | null
   stock_qty: number
+  last_sold_at?: string | null
+  days_out_of_stock?: number | null
   stock_status: {
     label: string
     action: string
     tone: 'danger' | 'warning' | 'caution' | 'info'
+    criticality?: string
   }
 }
 
@@ -77,8 +83,15 @@ export type RefundSummary = {
   refund_value: number | string
 }
 
+export type DashboardReportingPeriod = {
+  startDate: string
+  endDate: string
+  label?: string
+}
+
 export type DashboardResponse = {
-  asOfDate: string
+  reportingPeriod: DashboardReportingPeriod
+  asOfDate?: string
 
   revenueComparison: RevenueComparison
   quarterComparison: QuarterComparison

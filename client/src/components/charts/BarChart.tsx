@@ -6,6 +6,8 @@ type BarChartProps = {
   categories: string[]
   data: number[]
   seriesName?: string
+  variant?: 'light' | 'dark'
+  height?: number
 }
 
 function shortenLabel(label: string) {
@@ -25,9 +27,15 @@ export default function BarChart({
   categories,
   data,
   seriesName = 'Revenue',
+  variant = 'light',
+  height = 360,
 }: BarChartProps) {
+  const isDark = variant === 'dark'
   const outerRef = useRef<HTMLDivElement | null>(null)
   const [containerWidth, setContainerWidth] = useState(0)
+  const [windowWidth, setWindowWidth] = useState<number>(
+    typeof window !== 'undefined' ? window.innerWidth : 1440
+  )
 
   useEffect(() => {
     if (!outerRef.current) return
@@ -43,15 +51,20 @@ export default function BarChart({
     return () => observer.disconnect()
   }, [])
 
-  const formattedCategories = useMemo(
-    () => categories.map(shortenLabel),
-    [categories]
-  )
+  useEffect(() => {
+    const onResize = () => setWindowWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
-  const enableHorizontalScroll = containerWidth > 0 && containerWidth < 640
+  const formattedCategories = useMemo(() => categories.map(shortenLabel), [categories])
+
+  const enableHorizontalScroll =
+    containerWidth > 0 && containerWidth < 760 && windowWidth < 1024
+
   const chartWidth = enableHorizontalScroll
-    ? Math.max(formattedCategories.length * 72, 720)
-    : containerWidth || 800
+    ? Math.max(formattedCategories.length * 72, 780)
+    : containerWidth || 860
 
   const shouldRotateLabels = useMemo(() => {
     if (!formattedCategories.length || !chartWidth) return false
@@ -59,17 +72,29 @@ export default function BarChart({
     return widthPerLabel < 64
   }, [formattedCategories, chartWidth])
 
+  const axisColor = isDark ? '#CBD5E1' : '#475569'
+  const gridColor = isDark ? 'rgba(148,163,184,0.18)' : '#E2E8F0'
+  const axisBorderColor = isDark ? 'rgba(148,163,184,0.25)' : '#CBD5E1'
+
   const options: ApexOptions = {
     chart: {
       type: 'bar',
       toolbar: { show: false },
       parentHeightOffset: 0,
+      background: 'transparent',
     },
-    colors: ['#7C3AED'],
+    theme: {
+      mode: isDark ? 'dark' : 'light',
+    },
+    colors: ['#6822FF'],
+    fill: {
+      type: 'solid',
+      opacity: 1,
+    },
     plotOptions: {
       bar: {
         horizontal: false,
-        columnWidth: '40%',
+        columnWidth: '48%',
         borderRadius: 6,
         borderRadiusApplication: 'end',
       } as any,
@@ -77,20 +102,23 @@ export default function BarChart({
     dataLabels: {
       enabled: false,
     },
+    stroke: {
+      show: false,
+    },
     grid: {
-      borderColor: '#E2E8F0',
+      borderColor: gridColor,
       padding: {
         top: 8,
-        right: 8,
+        right: 12,
         left: 8,
-        bottom: shouldRotateLabels ? 26 : 12,
+        bottom: shouldRotateLabels ? 28 : 14,
       },
     },
     xaxis: {
       categories: formattedCategories,
       axisBorder: {
         show: true,
-        color: '#CBD5E1',
+        color: axisBorderColor,
       },
       axisTicks: {
         show: false,
@@ -101,22 +129,30 @@ export default function BarChart({
         hideOverlappingLabels: false,
         trim: false,
         offsetY: 8,
-        minHeight: shouldRotateLabels ? 56 : 34,
-        maxHeight: shouldRotateLabels ? 72 : 40,
+        minHeight: shouldRotateLabels ? 56 : 36,
+        maxHeight: shouldRotateLabels ? 72 : 42,
         style: {
           fontSize: '12px',
+          colors: formattedCategories.map(() => axisColor),
+          fontWeight: 500,
         },
       },
     },
     yaxis: {
       labels: {
         formatter: (value) => `$${Math.round(value).toLocaleString()}`,
+        style: {
+          colors: [axisColor],
+          fontSize: '12px',
+          fontWeight: 500,
+        },
       },
     },
     legend: {
       show: false,
     },
     tooltip: {
+      theme: isDark ? 'dark' : 'light',
       y: {
         formatter: (value) => `$${value.toLocaleString()}`,
       },
@@ -135,15 +171,15 @@ export default function BarChart({
       <div
         className={
           enableHorizontalScroll
-            ? 'w-full max-w-full overflow-x-auto overflow-y-hidden pb-2'
-            : 'w-full max-w-full'
+            ? 'w-full max-w-full overflow-x-auto overflow-y-hidden pb-2 lg:overflow-visible'
+            : 'w-full max-w-full overflow-hidden'
         }
         style={enableHorizontalScroll ? { WebkitOverflowScrolling: 'touch' } : undefined}
       >
         <div
-          className="h-[380px]"
           style={{
             width: enableHorizontalScroll ? `${chartWidth}px` : '100%',
+            height: `${height}px`,
           }}
         >
           <ReactApexChart

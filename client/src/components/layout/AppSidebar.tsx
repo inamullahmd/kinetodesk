@@ -1,222 +1,270 @@
-import { useState } from 'react'
+import type { ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import {
+  BarChart3,
   Boxes,
   CalendarDays,
   ChevronDown,
   ClipboardList,
   LayoutDashboard,
-  Mail,
-  MessageCircleMore,
-  Package2,
-  Puzzle,
   ShoppingCart,
   Table2,
-  Ticket,
-  UserCircle2,
+  UserCircle,
+  WalletCards,
 } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
+import type { AppTheme } from '../../layouts/DashboardLayout'
 
-type LinkItemProps = {
-  icon: LucideIcon
-  label: string
-  to?: string
-  badge?: string
+type AppSidebarProps = {
+  theme: AppTheme
 }
 
-type ExpandableItemProps = {
-  icon: LucideIcon
+type SidebarLinkProps = {
   label: string
-  badge?: string
-  defaultOpen?: boolean
-  children: React.ReactNode
+  to: string
+  icon: ReactNode
+  theme: AppTheme
+  end?: boolean
 }
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="px-5 pb-3 pt-6 text-[13px] font-semibold uppercase tracking-[0.08em] text-[#B0A8C7]">
-      {children}
-    </div>
-  )
+type SidebarSubLinkProps = {
+  label: string
+  to: string
+  theme: AppTheme
+  end?: boolean
+}
+
+function getActiveClass(isDark: boolean) {
+  return isDark
+    ? 'border-blue-500/20 bg-blue-500/10 text-blue-300'
+    : 'border-blue-200 bg-blue-50 text-blue-700'
+}
+
+function getInactiveClass(isDark: boolean) {
+  return isDark
+    ? 'border-transparent text-slate-400 hover:bg-slate-900 hover:text-white'
+    : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-950'
 }
 
 function SidebarLink({
-  icon: Icon,
   label,
   to,
-  badge,
-}: LinkItemProps) {
-  if (to) {
-    return (
-      <NavLink
-        to={to}
-        end
-        className={({ isActive }) =>
-          [
-            'flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left transition-all',
-            isActive
-              ? 'bg-[#F2F0FF] text-[#6C3BFF]'
-              : 'text-slate-700 hover:bg-slate-50',
-          ].join(' ')
-        }
-      >
-        {({ isActive }) => (
-          <>
-            <Icon
-              size={20}
-              strokeWidth={1.9}
-              className={isActive ? 'text-[#6C3BFF]' : 'text-slate-500'}
-            />
-
-            <span className="flex-1 text-[15px] font-medium">{label}</span>
-
-            {badge ? (
-              <span className="rounded-full bg-[#EAF7EA] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#4CAF50]">
-                {badge}
-              </span>
-            ) : null}
-          </>
-        )}
-      </NavLink>
-    )
-  }
+  icon,
+  theme,
+  end = false,
+}: SidebarLinkProps) {
+  const isDark = theme === 'dark'
 
   return (
-    <button
-      type="button"
-      className="flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-slate-700 transition-all hover:bg-slate-50"
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        [
+          'flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold transition',
+          isActive ? getActiveClass(isDark) : getInactiveClass(isDark),
+        ].join(' ')
+      }
     >
-      <Icon size={20} strokeWidth={1.9} className="text-slate-500" />
-      <span className="flex-1 text-[15px] font-medium">{label}</span>
-
-      {badge ? (
-        <span className="rounded-full bg-[#EAF7EA] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#4CAF50]">
-          {badge}
-        </span>
-      ) : null}
-    </button>
-  )
-}
-
-function SidebarExpandable({
-  icon: Icon,
-  label,
-  badge,
-  defaultOpen = false,
-  children,
-}: ExpandableItemProps) {
-  const [open, setOpen] = useState(defaultOpen)
-
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        className="flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-slate-700 transition-all hover:bg-slate-50"
-      >
-        <Icon size={20} strokeWidth={1.9} className="text-slate-500" />
-
-        <span className="flex-1 text-[15px] font-medium">{label}</span>
-
-        {badge ? (
-          <span className="rounded-full bg-[#EAF7EA] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#4CAF50]">
-            {badge}
-          </span>
-        ) : null}
-
-        <ChevronDown
-          size={18}
-          strokeWidth={2}
-          className={[
-            'text-slate-500 transition-transform',
-            open ? 'rotate-180' : '',
-          ].join(' ')}
-        />
-      </button>
-
-      {open ? <div className="mt-1 space-y-1 pl-11">{children}</div> : null}
-    </div>
+      <span className="flex h-5 w-5 items-center justify-center">
+        {icon}
+      </span>
+      <span>{label}</span>
+    </NavLink>
   )
 }
 
 function SidebarSubLink({
   label,
-}: {
-  label: string
-}) {
+  to,
+  theme,
+  end = false,
+}: SidebarSubLinkProps) {
+  const isDark = theme === 'dark'
+
   return (
-    <button
-      type="button"
-      className="block w-full rounded-lg px-3 py-2.5 text-left text-[14px] font-medium text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-700"
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        [
+          'block rounded-xl border px-3 py-2 text-sm font-medium transition',
+          isActive ? getActiveClass(isDark) : getInactiveClass(isDark),
+        ].join(' ')
+      }
     >
       {label}
-    </button>
+    </NavLink>
   )
 }
 
-export default function AppSidebar() {
+export default function AppSidebar({ theme }: AppSidebarProps) {
+  const location = useLocation()
+  const isDark = theme === 'dark'
+
+  const inventoryActive = location.pathname.startsWith('/inventory')
+  const [inventoryOpen, setInventoryOpen] = useState(inventoryActive)
+
+  useEffect(() => {
+    if (inventoryActive) {
+      setInventoryOpen(true)
+    }
+  }, [inventoryActive])
+
+  const inventoryParentClass = [
+    'flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-sm font-semibold transition',
+    inventoryActive ? getActiveClass(isDark) : getInactiveClass(isDark),
+  ].join(' ')
+
   return (
-    <aside className="hidden w-[290px] shrink-0 border-r border-slate-200 bg-white lg:flex lg:flex-col">
-      <div className="px-5 pb-4 pt-6">
+    <aside
+      className={[
+        'hidden min-h-screen w-[290px] shrink-0 border-r px-5 py-7 lg:block',
+        isDark
+          ? 'border-slate-800 bg-slate-950'
+          : 'border-slate-200 bg-white',
+      ].join(' ')}
+    >
+      <div className="mb-10">
         <div
-          className="text-[26px] leading-none text-slate-950"
-          style={{ fontFamily: '"Chango", cursive' }}
+          className={[
+            'text-[28px] font-extrabold tracking-tight',
+            isDark ? 'text-white' : 'text-slate-950',
+          ].join(' ')}
         >
           kinetodesk.
         </div>
 
-        <div className="mt-2 text-[13px] font-medium text-slate-500">
+        <div
+          className={[
+            'mt-1 text-sm font-medium',
+            isDark ? 'text-slate-400' : 'text-slate-500',
+          ].join(' ')}
+        >
           Admin Dashboard
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 pb-6">
-        <SectionHeading>Menu</SectionHeading>
-
-        <div className="space-y-1.5">
-          <SidebarLink
-            icon={LayoutDashboard}
-            label="Dashboard"
-            to="/dashboard"
-          />
-
-          <SidebarExpandable
-            icon={Boxes}
-            label="Inventory"
-            defaultOpen
-          >
-            <SidebarSubLink label="Products" />
-            <SidebarSubLink label="Categories" />
-            <SidebarSubLink label="Stock Movements" />
-          </SidebarExpandable>
-
-          <SidebarLink
-            icon={ShoppingCart}
-            label="Orders"
-            to="/orders"
-          />
-
-          <SidebarLink icon={CalendarDays} label="Calendar" />
-          <SidebarLink icon={UserCircle2} label="User Profile" />
-          <SidebarLink icon={ClipboardList} label="Tasks" />
-          <SidebarLink icon={Table2} label="Tables" />
-          <SidebarLink icon={Package2} label="Pages" />
-        </div>
-
-        <SectionHeading>Support</SectionHeading>
-
-        <div className="space-y-1.5">
-          <SidebarLink icon={MessageCircleMore} label="Chat" />
-          <SidebarLink icon={Ticket} label="Support Ticket" badge="New" />
-          <SidebarLink icon={Mail} label="Email" />
-        </div>
-
-        <SectionHeading>Others</SectionHeading>
-
-        <div className="space-y-1.5">
-          <SidebarLink icon={Puzzle} label="UI Elements" />
-        </div>
+      <div
+        className={[
+          'mb-4 px-3 text-xs font-bold uppercase tracking-[0.18em]',
+          isDark ? 'text-slate-600' : 'text-slate-400',
+        ].join(' ')}
+      >
+        Menu
       </div>
+
+      <nav className="space-y-1">
+        <SidebarLink
+          label="Dashboard"
+          to="/dashboard"
+          end
+          icon={<LayoutDashboard size={19} />}
+          theme={theme}
+        />
+
+        <SidebarLink
+          label="Orders"
+          to="/orders"
+          icon={<ShoppingCart size={19} />}
+          theme={theme}
+        />
+
+        <div>
+          <button
+            type="button"
+            onClick={() => setInventoryOpen((prev) => !prev)}
+            className={inventoryParentClass}
+          >
+            <span className="flex items-center gap-3">
+              <Boxes size={19} />
+              <span>Inventory</span>
+            </span>
+
+            <ChevronDown
+              size={16}
+              className={[
+                'transition-transform',
+                inventoryOpen ? 'rotate-180' : '',
+                inventoryActive
+                  ? isDark
+                    ? 'text-blue-300'
+                    : 'text-blue-600'
+                  : isDark
+                    ? 'text-slate-500'
+                    : 'text-slate-400',
+              ].join(' ')}
+            />
+          </button>
+
+          {inventoryOpen ? (
+            <div className="ml-8 mt-2 space-y-1">
+              <SidebarSubLink
+                label="Overview"
+                to="/inventory"
+                end
+                theme={theme}
+              />
+
+              <SidebarSubLink
+                label="Products"
+                to="/inventory/products"
+                theme={theme}
+              />
+
+              <SidebarSubLink
+                label="Alerts"
+                to="/inventory/alerts"
+                theme={theme}
+              />
+            </div>
+          ) : null}
+        </div>
+
+        
+
+        <SidebarLink
+          label="Calendar"
+          to="/calendar"
+          icon={<CalendarDays size={19} />}
+          theme={theme}
+        />
+
+        <SidebarLink
+          label="User Profile"
+          to="/profile"
+          icon={<UserCircle size={19} />}
+          theme={theme}
+        />
+
+        <SidebarLink
+          label="Tasks"
+          to="/tasks"
+          icon={<ClipboardList size={19} />}
+          theme={theme}
+        />
+
+        <SidebarLink
+          label="Tables"
+          to="/tables"
+          icon={<Table2 size={19} />}
+          theme={theme}
+        />
+
+        <SidebarLink
+          label="Pages"
+          to="/pages"
+          icon={<WalletCards size={19} />}
+          theme={theme}
+        />
+
+        <SidebarLink
+          label="Reports"
+          to="/reports"
+          icon={<BarChart3 size={19} />}
+          theme={theme}
+        />
+      </nav>
     </aside>
   )
 }

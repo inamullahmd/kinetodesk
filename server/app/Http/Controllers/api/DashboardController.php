@@ -3,9 +3,6 @@
 namespace App\Http\Controllers\api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Product;
-use App\Models\SalesOrder;
-use App\Models\SalesOrderItem;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +14,7 @@ class DashboardController extends Controller
     public function __invoke(): JsonResponse
     {
         return response()->json([
+            'reportingPeriod' => $this->getCurrentReportingPeriod(),
             'asOfDate' => $this->asOfDate()->toDateString(),
 
             'revenueComparison' => $this->getRevenueComparedToPreviousMonth(),
@@ -30,7 +28,7 @@ class DashboardController extends Controller
             'last8QuartersRevenue' => $this->getRevenueForLast8Quarters(),
             'last8QuartersProfit' => $this->getProfitForLast8Quarters(),
 
-            'salesByChannel' => $this->salesByChannelForCurrentMonth(),
+            'salesByChannel' => $this->getSalesByChannelForCurrentMonth(),
             'lowStockProducts' => $this->getLowStockProducts(10),
 
             'topSellingProduct' => $this->getTopSellingProductForCurrentMonth(),
@@ -45,6 +43,28 @@ class DashboardController extends Controller
         return CarbonImmutable::parse(self::DASHBOARD_AS_OF);
     }
 
+    protected function getCurrentReportingPeriod(): array
+    {
+        $asOf = $this->asOfDate();
+        $startDate = $asOf->startOfMonth()->startOfDay();
+        $endDate = $asOf->endOfDay();
+
+        return [
+            'startDate' => $startDate->toDateString(),
+            'endDate' => $endDate->toDateString(),
+            'label' => $this->formatReportingPeriodLabel($startDate, $endDate),
+        ];
+    }
+
+    protected function formatReportingPeriodLabel(CarbonImmutable $startDate, CarbonImmutable $endDate): string
+    {
+        if ($startDate->year === $endDate->year) {
+            return $startDate->format('F j') . ' - ' . $endDate->format('F j, Y');
+        }
+
+        return $startDate->format('F j, Y') . ' - ' . $endDate->format('F j, Y');
+    }
+
     protected function getRevenueComparedToPreviousMonth(): array
     {
         $today = $this->asOfDate();
@@ -52,11 +72,12 @@ class DashboardController extends Controller
         $currentStart = $today->startOfMonth()->startOfDay();
         $currentEnd = $today->endOfDay();
 
-        $previousMonthStart = $currentStart->subMonth()->startOfMonth();
-        $previousMonthEnd = $previousMonthStart->endOfMonth()->endOfDay();
+        $previousMonthDate = $today->subMonthNoOverflow();
+        $previousStart = $previousMonthDate->startOfMonth()->startOfDay();
+        $previousEnd = $previousMonthDate->endOfMonth()->endOfDay();
 
         $currentRevenue = $this->getRevenueByDateRange($currentStart, $currentEnd);
-        $previousRevenue = $this->getRevenueByDateRange($previousMonthStart, $previousMonthEnd);
+        $previousRevenue = $this->getRevenueByDateRange($previousStart, $previousEnd);
 
         return [
             'current_month_revenue' => round($currentRevenue, 2),
@@ -74,8 +95,9 @@ class DashboardController extends Controller
         $currentQuarterStart = $today->startOfQuarter()->startOfDay();
         $currentQuarterEnd = $today->endOfDay();
 
-        $previousQuarterStart = $currentQuarterStart->subQuarter()->startOfDay();
-        $previousQuarterEnd = $previousQuarterStart->endOfQuarter()->endOfDay();
+        $previousQuarterDate = $today->subQuarters(1);
+        $previousQuarterStart = $previousQuarterDate->startOfQuarter()->startOfDay();
+        $previousQuarterEnd = $previousQuarterDate->endOfQuarter()->endOfDay();
 
         $currentRevenue = $this->getRevenueByDateRange($currentQuarterStart, $currentQuarterEnd);
         $previousRevenue = $this->getRevenueByDateRange($previousQuarterStart, $previousQuarterEnd);
@@ -96,11 +118,12 @@ class DashboardController extends Controller
         $currentStart = $today->startOfMonth()->startOfDay();
         $currentEnd = $today->endOfDay();
 
-        $previousMonthStart = $currentStart->subMonth()->startOfMonth();
-        $previousMonthEnd = $previousMonthStart->endOfMonth()->endOfDay();
+        $previousMonthDate = $today->subMonthNoOverflow();
+        $previousStart = $previousMonthDate->startOfMonth()->startOfDay();
+        $previousEnd = $previousMonthDate->endOfMonth()->endOfDay();
 
         $currentProfit = $this->getNetProfitByDateRange($currentStart, $currentEnd);
-        $previousProfit = $this->getNetProfitByDateRange($previousMonthStart, $previousMonthEnd);
+        $previousProfit = $this->getNetProfitByDateRange($previousStart, $previousEnd);
 
         return [
             'current_month_profit' => round($currentProfit, 2),
@@ -118,8 +141,9 @@ class DashboardController extends Controller
         $currentQuarterStart = $today->startOfQuarter()->startOfDay();
         $currentQuarterEnd = $today->endOfDay();
 
-        $previousQuarterStart = $currentQuarterStart->subQuarter()->startOfDay();
-        $previousQuarterEnd = $previousQuarterStart->endOfQuarter()->endOfDay();
+        $previousQuarterDate = $today->subQuarters(1);
+        $previousQuarterStart = $previousQuarterDate->startOfQuarter()->startOfDay();
+        $previousQuarterEnd = $previousQuarterDate->endOfQuarter()->endOfDay();
 
         $currentProfit = $this->getNetProfitByDateRange($currentQuarterStart, $currentQuarterEnd);
         $previousProfit = $this->getNetProfitByDateRange($previousQuarterStart, $previousQuarterEnd);
@@ -150,12 +174,11 @@ class DashboardController extends Controller
         $revenues = [];
 
         for ($i = 11; $i >= 0; $i--) {
-            $monthBase = $asOf->copy()->subMonthsNoOverflow($i);
-
-            $startDate = $monthBase->copy()->startOfMonth()->startOfDay();
+            $monthBase = $asOf->subMonthsNoOverflow($i);
+            $startDate = $monthBase->startOfMonth()->startOfDay();
             $endDate = $i === 0
-                ? $asOf->copy()->endOfDay()
-                : $monthBase->copy()->endOfMonth()->endOfDay();
+                ? $asOf->endOfDay()
+                : $monthBase->endOfMonth()->endOfDay();
 
             $revenues[] = [
                 'month' => $startDate->format('F Y'),
@@ -172,12 +195,11 @@ class DashboardController extends Controller
         $profits = [];
 
         for ($i = 11; $i >= 0; $i--) {
-            $monthBase = $asOf->copy()->subMonthsNoOverflow($i);
-
-            $startDate = $monthBase->copy()->startOfMonth()->startOfDay();
+            $monthBase = $asOf->subMonthsNoOverflow($i);
+            $startDate = $monthBase->startOfMonth()->startOfDay();
             $endDate = $i === 0
-                ? $asOf->copy()->endOfDay()
-                : $monthBase->copy()->endOfMonth()->endOfDay();
+                ? $asOf->endOfDay()
+                : $monthBase->endOfMonth()->endOfDay();
 
             $profits[] = [
                 'month' => $startDate->format('F Y'),
@@ -194,16 +216,14 @@ class DashboardController extends Controller
         $revenues = [];
 
         for ($i = 0; $i < 8; $i++) {
-            $quarterDate = $asOf->copy()->subQuarters($i);
-            $startDate = $quarterDate->copy()->startOfQuarter()->startOfDay();
+            $quarterDate = $asOf->subQuarters($i);
+            $startDate = $quarterDate->startOfQuarter()->startOfDay();
             $endDate = $i === 0
-                ? $asOf->copy()->endOfDay()
-                : $quarterDate->copy()->endOfQuarter()->endOfDay();
-
-            $quarterNumber = (int) ceil($startDate->month / 3);
+                ? $asOf->endOfDay()
+                : $quarterDate->endOfQuarter()->endOfDay();
 
             $revenues[] = [
-                'quarter' => 'Q' . $quarterNumber . ' ' . $startDate->year,
+                'quarter' => 'Q' . $startDate->quarter . ' ' . $startDate->year,
                 'revenue' => round($this->getRevenueByDateRange($startDate, $endDate), 2),
             ];
         }
@@ -217,16 +237,14 @@ class DashboardController extends Controller
         $profits = [];
 
         for ($i = 0; $i < 8; $i++) {
-            $quarterDate = $asOf->copy()->subQuarters($i);
-            $startDate = $quarterDate->copy()->startOfQuarter()->startOfDay();
+            $quarterDate = $asOf->subQuarters($i);
+            $startDate = $quarterDate->startOfQuarter()->startOfDay();
             $endDate = $i === 0
-                ? $asOf->copy()->endOfDay()
-                : $quarterDate->copy()->endOfQuarter()->endOfDay();
-
-            $quarterNumber = (int) ceil($startDate->month / 3);
+                ? $asOf->endOfDay()
+                : $quarterDate->endOfQuarter()->endOfDay();
 
             $profits[] = [
-                'quarter' => 'Q' . $quarterNumber . ' ' . $startDate->year,
+                'quarter' => 'Q' . $startDate->quarter . ' ' . $startDate->year,
                 'profit' => round($this->getNetProfitByDateRange($startDate, $endDate), 2),
             ];
         }
@@ -236,7 +254,7 @@ class DashboardController extends Controller
 
     protected function getRevenueByDateRange(CarbonImmutable $startDate, CarbonImmutable $endDate): float
     {
-        return (float) SalesOrder::query()
+        return (float) DB::table('sales_orders')
             ->whereBetween('ordered_at', [$startDate, $endDate])
             ->where('status', 'delivered')
             ->sum('grand_total');
@@ -244,7 +262,7 @@ class DashboardController extends Controller
 
     protected function getGrossProfitByDateRange(CarbonImmutable $startDate, CarbonImmutable $endDate): float
     {
-        return (float) SalesOrderItem::query()
+        return (float) DB::table('sales_order_items')
             ->join('sales_orders', 'sales_order_items.sales_order_id', '=', 'sales_orders.id')
             ->whereBetween('sales_orders.ordered_at', [$startDate, $endDate])
             ->where('sales_orders.status', 'delivered')
@@ -254,9 +272,11 @@ class DashboardController extends Controller
     protected function getScrappedReturnLossByDateRange(CarbonImmutable $startDate, CarbonImmutable $endDate): float
     {
         return (float) DB::table('return_items')
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->where('action', 'scrap')
-            ->sum('refund_amount');
+            ->join('returns', 'return_items.return_id', '=', 'returns.id')
+            ->join('sales_orders', 'returns.sales_order_id', '=', 'sales_orders.id')
+            ->whereBetween('sales_orders.ordered_at', [$startDate, $endDate])
+            ->where('return_items.action', 'scrap')
+            ->sum('return_items.refund_amount');
     }
 
     protected function getNetProfitByDateRange(CarbonImmutable $startDate, CarbonImmutable $endDate): float
@@ -267,18 +287,25 @@ class DashboardController extends Controller
         return round($grossProfit - $scrapLoss, 2);
     }
 
-    protected function salesByChannelForCurrentMonth(): array
+    protected function getSalesByChannelForCurrentMonth(): array
     {
         $today = $this->asOfDate();
         $startOfMonth = $today->startOfMonth()->startOfDay();
         $endOfMonth = $today->endOfDay();
 
-        return SalesOrder::query()
-            ->select('channel', DB::raw('SUM(grand_total) as total_revenue, COUNT(*) as total_orders'))
+        return DB::table('sales_orders')
+            ->select(['channel', DB::raw('SUM(grand_total) as total_revenue, COUNT(*) as total_orders')])
             ->whereBetween('ordered_at', [$startOfMonth, $endOfMonth])
-            ->where('status', 'delivered')
+            ->where('status', '!=', 'refunded')
             ->groupBy('channel')
             ->get()
+            ->map(function ($row) {
+                return [
+                    'channel' => $row->channel,
+                    'total_revenue' => round((float) $row->total_revenue, 2),
+                    'total_orders' => (int) $row->total_orders,
+                ];
+            })
             ->toArray();
     }
 
@@ -288,25 +315,45 @@ class DashboardController extends Controller
         $startOfMonth = $today->startOfMonth()->startOfDay();
         $endOfMonth = $today->endOfDay();
 
-        $item = SalesOrderItem::query()
-            ->select('product_id', DB::raw('SUM(qty) as total_quantity'))
-            ->whereHas('salesOrder', function ($query) use ($startOfMonth, $endOfMonth) {
-                $query->whereBetween('ordered_at', [$startOfMonth, $endOfMonth])
-                    ->where('status', 'delivered');
-            })
-            ->groupBy('product_id')
+        $row = DB::table('sales_order_items')
+            ->join('sales_orders', 'sales_order_items.sales_order_id', '=', 'sales_orders.id')
+            ->join('products', 'sales_order_items.product_id', '=', 'products.id')
+            ->leftJoin('categories as product_category', 'products.category_id', '=', 'product_category.id')
+            ->leftJoin('categories as parent_category', 'product_category.parent_id', '=', 'parent_category.id')
+            ->select([
+                'sales_order_items.product_id',
+                'products.title',
+                DB::raw('COALESCE(parent_category.name, product_category.name) as category_name'),
+                DB::raw("
+                CASE
+                    WHEN product_category.parent_id IS NULL THEN NULL
+                    ELSE product_category.name
+                END as sub_category_name
+            "),
+                DB::raw('SUM(sales_order_items.qty) as total_quantity'),
+            ])
+            ->whereBetween('sales_orders.ordered_at', [$startOfMonth, $endOfMonth])
+            ->where('sales_orders.status', 'delivered')
+            ->groupBy(
+                'sales_order_items.product_id',
+                'products.title',
+                'product_category.name',
+                'product_category.parent_id',
+                'parent_category.name'
+            )
             ->orderByDesc('total_quantity')
-            ->with('product:id,title')
             ->first();
 
-        if (!$item) {
+        if (!$row) {
             return null;
         }
 
         return [
-            'product_id' => $item->product_id,
-            'product_name' => $item->product?->title ?? 'Unknown',
-            'total_quantity' => (int) $item->total_quantity,
+            'product_id' => (int) $row->product_id,
+            'product_name' => $row->title,
+            'category_name' => $row->category_name,
+            'sub_category_name' => $row->sub_category_name,
+            'total_quantity' => (int) $row->total_quantity,
         ];
     }
 
@@ -316,27 +363,30 @@ class DashboardController extends Controller
         $startOfMonth = $today->startOfMonth()->startOfDay();
         $endOfMonth = $today->endOfDay();
 
-        $order = SalesOrder::query()
-            ->select('employee_id', DB::raw('SUM(grand_total) as total_sales, COUNT(*) as total_orders'))
-            ->whereBetween('ordered_at', [$startOfMonth, $endOfMonth])
-            ->where('status', 'delivered')
-            ->whereNotNull('employee_id')
-            ->groupBy('employee_id')
+        $row = DB::table('sales_orders')
+            ->join('employees', 'sales_orders.employee_id', '=', 'employees.id')
+            ->select([
+                'sales_orders.employee_id',
+                DB::raw("TRIM(CONCAT(employees.first_name, ' ', employees.last_name)) as employee_name"),
+                DB::raw('SUM(sales_orders.grand_total) as total_sales'),
+                DB::raw('COUNT(*) as total_orders')
+            ])
+            ->whereBetween('sales_orders.ordered_at', [$startOfMonth, $endOfMonth])
+            ->where('sales_orders.status', 'delivered')
+            ->whereNotNull('sales_orders.employee_id')
+            ->groupBy('sales_orders.employee_id', 'employees.first_name', 'employees.last_name')
             ->orderByDesc('total_sales')
-            ->with('employee:id,first_name,last_name')
             ->first();
 
-        if (!$order) {
+        if (!$row) {
             return null;
         }
 
         return [
-            'employee_id' => $order->employee_id,
-            'employee_name' => $order->employee
-                ? $order->employee->first_name . ' ' . $order->employee->last_name
-                : 'Unknown',
-            'total_sales' => round((float) $order->total_sales, 2),
-            'total_orders' => (int) $order->total_orders,
+            'employee_id' => (int) $row->employee_id,
+            'employee_name' => $row->employee_name ?: 'Unknown',
+            'total_sales' => round((float) $row->total_sales, 2),
+            'total_orders' => (int) $row->total_orders,
         ];
     }
 
@@ -346,7 +396,7 @@ class DashboardController extends Controller
         $startOfMonth = $today->startOfMonth()->startOfDay();
         $endOfMonth = $today->endOfDay();
 
-        return SalesOrder::query()
+        return DB::table('sales_orders')
             ->whereBetween('ordered_at', [$startOfMonth, $endOfMonth])
             ->where('status', 'pending')
             ->count();
@@ -372,54 +422,63 @@ class DashboardController extends Controller
 
     protected function getLowStockProducts(int $threshold = 10): array
     {
-        return Product::query()
+        $today = $this->asOfDate();
+
+        $lastSalesSubquery = DB::table('sales_order_items')
+            ->join('sales_orders', 'sales_order_items.sales_order_id', '=', 'sales_orders.id')
+            ->select([
+                'sales_order_items.product_id',
+                DB::raw('MAX(sales_orders.ordered_at) as last_sold_at')
+            ])
+            ->where('sales_orders.status', 'delivered')
+            ->groupBy('sales_order_items.product_id');
+
+        return DB::table('products')
             ->leftJoin('stock_batches', 'products.id', '=', 'stock_batches.product_id')
+            ->leftJoinSub($lastSalesSubquery, 'last_sales', function ($join) {
+                $join->on('products.id', '=', 'last_sales.product_id');
+            })
             ->where('products.is_active', true)
-            ->groupBy('products.id', 'products.title')
-            ->select(
+            ->groupBy(
                 'products.id',
                 'products.title',
-                DB::raw('COALESCE(SUM(stock_batches.qty_remaining), 0) as stock_qty')
+                'products.internal_sku',
+                'last_sales.last_sold_at'
             )
+            ->select([
+                'products.id',
+                'products.title',
+                'products.internal_sku',
+                'last_sales.last_sold_at',
+                DB::raw('COALESCE(SUM(stock_batches.qty_remaining), 0) as stock_qty')
+            ])
             ->havingRaw('COALESCE(SUM(stock_batches.qty_remaining), 0) <= ?', [$threshold])
             ->orderBy('stock_qty')
-            ->take(5)
+            ->orderBy('last_sales.last_sold_at')
+            ->limit(5)
             ->get()
-            ->map(function ($product) {
+            ->map(function ($product) use ($today) {
                 $stock = (int) $product->stock_qty;
+                $lastSoldAt = $product->last_sold_at
+                    ? CarbonImmutable::parse($product->last_sold_at)
+                    : null;
+                $daysOut = $lastSoldAt ? $lastSoldAt->diffInDays($today) : null;
 
                 return [
-                    'id' => $product->id,
+                    'id' => (int) $product->id,
                     'title' => $product->title,
+                    'internal_sku' => $product->internal_sku,
                     'stock_qty' => $stock,
-                    'stock_status' => $this->getStockStatus($stock),
+                    'last_sold_at' => $lastSoldAt?->toDateString(),
+                    'days_out_of_stock' => $daysOut,
+                    'stock_status' => [
+                        'label' => $stock === 0 ? 'Out of Stock' : ($stock <= 3 ? 'Critical' : 'Low Stock'),
+                        'action' => $stock === 0 ? 'Order ASAP' : ($stock <= 3 ? 'Reorder Immediately' : 'Reorder Soon'),
+                        'tone' => $stock === 0 ? 'danger' : ($stock <= 3 ? 'warning' : 'caution'),
+                        'criticality' => $daysOut !== null && $daysOut >= 21 ? 'Critical' : ($stock === 0 ? 'Urgent' : 'Monitor'),
+                    ],
                 ];
             })
             ->toArray();
-    }
-
-    protected function getStockStatus(int $stock): array
-    {
-        if ($stock === 0) {
-            return [
-                'label' => 'Out of Stock',
-                'action' => 'Order ASAP',
-                'tone' => 'danger',
-            ];
-        }
-
-        if ($stock <= 3) {
-            return [
-                'label' => 'Critical',
-                'action' => 'Reorder Immediately',
-                'tone' => 'warning',
-            ];
-        }
-
-        return [
-            'label' => 'Low Stock',
-            'action' => 'Reorder Soon',
-            'tone' => 'caution',
-        ];
     }
 }

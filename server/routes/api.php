@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\api\DashboardController;
 use App\Http\Controllers\api\OrdersController;
+use App\Http\Controllers\api\InventoryController;
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -21,5 +22,11 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 
 Route::get('/dashboard', DashboardController::class);
 
-Route::get('/orders/stats', [OrdersController::class, 'stats']);
-Route::get('/orders', [OrdersController::class, 'index']);
+Route::get('/orders', OrdersController::class);
+Route::get('/orders/{type}/{id}', [OrdersController::class, 'show']);
+
+
+Route::get('/inventory/overview', [InventoryController::class, 'overview']);
+Route::get('/inventory/products', [InventoryController::class, 'products']);
+Route::get('/inventory/products/{id}', [InventoryController::class, 'productDetail']);
+Route::get('/inventory/alerts', [InventoryController::class, 'alerts']);

@@ -1,5 +1,5 @@
 import { Outlet } from 'react-router-dom'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import AppSidebar from '../components/layout/AppSidebar'
 import AppHeader from '../components/layout/AppHeader'
 
@@ -9,29 +9,74 @@ export type DashboardHeaderRange = {
   label?: string
 }
 
+export type DashboardHeaderDateRangeValue = {
+  startDate: string
+  endDate: string
+}
+
+export type DashboardHeaderDateRangeControl = {
+  enabled: boolean
+  startDate: string
+  endDate: string
+  minDate?: string
+  maxDate?: string
+  onChange: (value: DashboardHeaderDateRangeValue) => void
+}
+
+export type AppTheme = 'light' | 'dark'
+
 export type DashboardOutletContext = {
-  setAsOfDate: (value: string | null) => void
   setHeaderRange: (value: DashboardHeaderRange | null) => void
+  setHeaderDateRangeControl: (value: DashboardHeaderDateRangeControl | null) => void
+  theme: AppTheme
+  toggleTheme: () => void
 }
 
 export default function DashboardLayout() {
-  const [asOfDate, setAsOfDate] = useState<string | null>(null)
   const [headerRange, setHeaderRange] = useState<DashboardHeaderRange | null>(null)
+  const [headerDateRangeControl, setHeaderDateRangeControl] =
+    useState<DashboardHeaderDateRangeControl | null>(null)
+
+  const [theme, setTheme] = useState<AppTheme>(() => {
+    const stored = window.localStorage.getItem('kinetodesk-theme')
+    return stored === 'dark' ? 'dark' : 'light'
+  })
+
+  useEffect(() => {
+    window.localStorage.setItem('kinetodesk-theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div
+      className={
+        theme === 'dark'
+          ? 'min-h-screen bg-slate-950 text-slate-100'
+          : 'min-h-screen bg-slate-50 text-slate-900'
+      }
+    >
       <div className="flex min-h-screen">
-        <AppSidebar />
+        <AppSidebar theme={theme} />
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <AppHeader asOfDate={asOfDate} headerRange={headerRange} />
+          <AppHeader
+            headerRange={headerRange}
+            headerDateRangeControl={headerDateRangeControl}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+          />
 
           <main className="flex-1 px-4 py-6 lg:px-8 lg:py-8">
             <div className="mx-auto w-full max-w-[1440px]">
               <Outlet
                 context={{
-                  setAsOfDate,
                   setHeaderRange,
+                  setHeaderDateRangeControl,
+                  theme,
+                  toggleTheme,
                 }}
               />
             </div>

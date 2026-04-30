@@ -1,22 +1,21 @@
 import apiClient from './client'
 import type {
-  OrdersFilters,
-  OrdersListResponse,
-  OrdersStatsResponse,
+  OrderDetail,
+  OrderType,
+  OrdersQueryParams,
+  OrdersResponse,
 } from '../types/orders'
 
-export async function getOrdersStats(params: OrdersFilters = {}) {
-  const response = await apiClient.get<OrdersStatsResponse>('/orders/stats', {
+export async function getOrdersOverview(params: OrdersQueryParams) {
+  const response = await apiClient.get<OrdersResponse>('/orders', {
     params,
   })
 
   return response.data
 }
 
-export async function getOrders(params: OrdersFilters = {}) {
-  const response = await apiClient.get<OrdersListResponse>('/orders', {
-    params,
-  })
+export async function getOrderDetail(type: OrderType, id: number) {
+  const response = await apiClient.get<OrderDetail>(`/orders/${type}/${id}`)
 
   return response.data
 }

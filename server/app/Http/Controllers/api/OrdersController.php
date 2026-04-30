@@ -3,363 +3,632 @@
 namespace App\Http\Controllers\api;
 
 use App\Http\Controllers\Controller;
-use App\Models\SalesOrder;
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 class OrdersController extends Controller
 {
-    private const AS_OF_DATE = '2026-03-31 23:59:59';
+    private const MAX_REPORT_DATE = '2026-03-31';
 
-    public function stats(Request $request): JsonResponse
+    private const SALES_STATUSES = [
+        'pending',
+        'confirmed',
+        'shipped',
+        'delivered',
+        'cancelled',
+        'returned',
+        'refunded',
+    ];
+
+    private const PURCHASE_STATUSES = [
+        'draft',
+        'issued',
+        'transit',
+        'fulfilled',
+        'cancelled',
+    ];
+
+    private const SALES_CHANNELS = [
+        'online',
+        'in_store',
+        'phone',
+    ];
+
+    public function __invoke(Request $request): JsonResponse
     {
-        [$startDate, $endDate] = $this->resolveStatsDateRange($request);
+        $type = $this->resolveType($request);
+        [$startDate, $endDate] = $this->resolveDateRange($request);
 
-        $summaryQuery = SalesOrder::query()
-            ->where('sales_orders.ordered_at', '<=', $this->asOfDate())
-            ->whereBetween('sales_orders.ordered_at', [$startDate, $endDate]);
+        $filters = [
+            'search' => trim((string) $request->query('search', '')),
+            'statuses' => $this->arrayQuery($request, 'statuses'),
+            'channels' => $this->arrayQuery($request, 'channels'),
+            'suppliers' => $this->arrayQuery($request, 'suppliers'),
+        ];
 
-        $summaryQuery = $this->applyCommonFilters($summaryQuery, $request, 'sales_orders');
+        $pagination = $this->resolvePagination($request);
 
-        $totalOrders = (clone $summaryQuery)->count();
-        $totalValue = round((float) (clone $summaryQuery)->sum('sales_orders.grand_total'), 2);
-
-        $pendingOrders = (clone $summaryQuery)->where('sales_orders.status', 'pending')->count();
-        $deliveredOrders = (clone $summaryQuery)->where('sales_orders.status', 'delivered')->count();
-        $cancelledOrders = (clone $summaryQuery)->where('sales_orders.status', 'cancelled')->count();
-
-        $statusCounts = (clone $summaryQuery)
-            ->selectRaw('sales_orders.status as status, COUNT(*) as total_orders')
-            ->groupBy('sales_orders.status')
-            ->orderByDesc('total_orders')
-            ->get()
-            ->map(fn($row) => [
-                'status' => $row->status,
-                'total_orders' => (int) $row->total_orders,
-            ])
-            ->values()
-            ->all();
-
-        $channelCounts = (clone $summaryQuery)
-            ->selectRaw('sales_orders.channel as channel, COUNT(*) as total_orders')
-            ->groupBy('sales_orders.channel')
-            ->orderByDesc('total_orders')
-            ->get()
-            ->map(fn($row) => [
-                'channel' => $row->channel,
-                'total_orders' => (int) $row->total_orders,
-            ])
-            ->values()
-            ->all();
-
-        $refundRow = DB::table('returns')
-            ->join('sales_orders', 'returns.sales_order_id', '=', 'sales_orders.id')
-            ->where('sales_orders.ordered_at', '<=', $this->asOfDate())
-            ->whereBetween('sales_orders.ordered_at', [$startDate, $endDate]);
-
-        $refundRow = $this->applyCommonFilters($refundRow, $request, 'sales_orders');
-
-        $refundSummary = $refundRow
-            ->selectRaw('COUNT(returns.id) as refund_count, COALESCE(SUM(returns.refund_amount), 0) as refund_value')
-            ->first();
+        $ordersPayload = $type === 'sales'
+            ? $this->getRecentSalesOrders($startDate, $endDate, $filters, $pagination)
+            : $this->getRecentPurchaseOrders($startDate, $endDate, $filters, $pagination);
 
         return response()->json([
-            'summary' => [
-                'total_orders' => $totalOrders,
-                'pending_orders' => $pendingOrders,
-                'delivered_orders' => $deliveredOrders,
-                'cancelled_orders' => $cancelledOrders,
-                'total_value' => $totalValue,
-                'refund_count' => (int) ($refundSummary->refund_count ?? 0),
-                'refund_value' => round((float) ($refundSummary->refund_value ?? 0), 2),
+            'type' => $type,
+            'reportingPeriod' => [
+                'startDate' => $startDate->toDateString(),
+                'endDate' => $endDate->toDateString(),
+                'maxDate' => self::MAX_REPORT_DATE,
+                'label' => $this->formatReportingPeriodLabel($startDate, $endDate),
             ],
-            'summary_period' => [
-                'label' => $startDate->format('F Y'),
-                'start_date' => $startDate->toDateString(),
-                'end_date' => $endDate->toDateString(),
-            ],
-            'status_counts' => $statusCounts,
-            'channel_counts' => $channelCounts,
-            'trend' => $this->getOrdersTrend($request),
-        ]);
-    }
-
-    public function index(Request $request): JsonResponse
-    {
-        $perPage = min(max((int) $request->integer('per_page', 25), 1), 100);
-
-        $query = $this->buildOrdersListQuery($request);
-        $sorts = $this->parseSorts($request);
-
-        if (!empty($sorts)) {
-            foreach ($sorts as $sort) {
-                $this->applySort($query, $sort['key'], $sort['direction']);
-            }
-        } else {
-            $query->orderByDesc('sales_orders.id');
-        }
-
-        $paginator = $query->paginate($perPage);
-
-        $rows = collect($paginator->items())
-            ->map(function ($order) {
-                return [
-                    'id' => $order->id,
-                    'order_number' => $order->order_number ?: 'SO-' . str_pad((string) $order->id, 6, '0', STR_PAD_LEFT),
-                    'ordered_at' => optional($order->ordered_at)->toDateTimeString(),
-                    'customer_name' => $order->customer_sort_name ?: 'Unknown',
-                    'channel' => $order->channel,
-                    'status' => $order->status,
-                    'grand_total' => round((float) $order->grand_total, 2),
-                    'employee_name' => $order->employee_sort_name ?: 'Unassigned',
-                ];
-            })
-            ->values();
-
-        return response()->json([
-            'data' => $rows,
-            'meta' => [
-                'current_page' => $paginator->currentPage(),
-                'last_page' => $paginator->lastPage(),
-                'per_page' => $paginator->perPage(),
-                'total' => $paginator->total(),
-                'from' => $paginator->firstItem(),
-                'to' => $paginator->lastItem(),
+            'summary' => $type === 'sales'
+                ? $this->getSalesSummary($startDate, $endDate)
+                : $this->getPurchaseSummary($startDate, $endDate),
+            'recentOrders' => $ordersPayload['orders'],
+            'pagination' => $ordersPayload['pagination'],
+            'filterOptions' => [
+                'statuses' => $type === 'sales' ? self::SALES_STATUSES : self::PURCHASE_STATUSES,
+                'channels' => self::SALES_CHANNELS,
+                'suppliers' => $this->getSupplierOptions(),
             ],
         ]);
     }
 
-    protected function buildOrdersListQuery(Request $request): Builder
+    public function show(Request $request, string $type, int $id): JsonResponse
     {
-        $customerSortSql = $this->customerSortSql();
-        $employeeSortSql = $this->employeeSortSql();
+        $type = in_array($type, ['sales', 'purchase'], true) ? $type : 'sales';
 
-        $query = SalesOrder::query()
-            ->leftJoin('customers', 'sales_orders.customer_id', '=', 'customers.id')
-            ->leftJoin('employees', 'sales_orders.employee_id', '=', 'employees.id')
-            ->where('sales_orders.ordered_at', '<=', $this->asOfDate())
-            ->select('sales_orders.*')
-            ->selectRaw("{$customerSortSql} as customer_sort_name")
-            ->selectRaw("{$employeeSortSql} as employee_sort_name");
+        $order = $type === 'sales'
+            ? $this->getSalesOrderDetail($id)
+            : $this->getPurchaseOrderDetail($id);
 
-        $query = $this->applyCommonFilters($query, $request, 'sales_orders');
-
-        $search = trim($request->string('search')->toString());
-
-        if ($search !== '') {
-            $query->where(function ($inner) use ($search, $customerSortSql, $employeeSortSql) {
-                $inner->where('sales_orders.order_number', 'like', "%{$search}%")
-                    ->orWhere('sales_orders.status', 'like', "%{$search}%")
-                    ->orWhere('sales_orders.channel', 'like', "%{$search}%")
-                    ->orWhereRaw("{$customerSortSql} LIKE ?", ["%{$search}%"])
-                    ->orWhereRaw("{$employeeSortSql} LIKE ?", ["%{$search}%"]);
-
-                if (is_numeric($search)) {
-                    $inner->orWhere('sales_orders.id', (int) $search);
-                }
-            });
+        if (!$order) {
+            return response()->json([
+                'message' => 'Order not found.',
+            ], 404);
         }
 
-        return $query;
+        return response()->json($order);
     }
 
-    protected function applyCommonFilters($query, Request $request, string $table)
+    protected function resolveType(Request $request): string
     {
-        $status = trim($request->string('status')->toString());
-        $channel = trim($request->string('channel')->toString());
-        $dateFrom = trim($request->string('date_from')->toString());
-        $dateTo = trim($request->string('date_to')->toString());
+        $type = (string) $request->query('type', 'sales');
 
-        if ($status !== '') {
-            $query->where("{$table}.status", $status);
-        }
-
-        if ($channel !== '') {
-            $query->where("{$table}.channel", $channel);
-        }
-
-        if ($dateFrom !== '') {
-            $query->where("{$table}.ordered_at", '>=', CarbonImmutable::parse($dateFrom)->startOfDay());
-        }
-
-        if ($dateTo !== '') {
-            $query->where("{$table}.ordered_at", '<=', CarbonImmutable::parse($dateTo)->endOfDay());
-        }
-
-        return $query;
+        return in_array($type, ['sales', 'purchase'], true) ? $type : 'sales';
     }
 
-    protected function getOrdersTrend(Request $request): array
+    protected function resolvePagination(Request $request): array
     {
-        $trendEnd = $request->filled('date_to')
-            ? CarbonImmutable::parse($request->string('date_to')->toString())->endOfDay()
-            : $this->asOfDate()->endOfDay();
+        $page = max((int) $request->query('page', 1), 1);
+        $perPage = (int) $request->query('perPage', 10);
 
-        if ($trendEnd->gt($this->asOfDate())) {
-            $trendEnd = $this->asOfDate()->endOfDay();
-        }
+        $perPage = max(min($perPage, 50), 5);
 
-        $trendStart = $request->filled('date_from')
-            ? CarbonImmutable::parse($request->string('date_from')->toString())->startOfDay()
-            : $trendEnd->subDays(29)->startOfDay();
-
-        $trendQuery = SalesOrder::query()
-            ->where('sales_orders.ordered_at', '<=', $this->asOfDate())
-            ->whereBetween('sales_orders.ordered_at', [$trendStart, $trendEnd]);
-
-        $trendQuery = $this->applyCommonFilters($trendQuery, $request, 'sales_orders');
-
-        $rows = $trendQuery
-            ->selectRaw('DATE(sales_orders.ordered_at) as order_date, COUNT(*) as total_orders')
-            ->groupBy(DB::raw('DATE(sales_orders.ordered_at)'))
-            ->orderBy('order_date')
-            ->get()
-            ->keyBy('order_date');
-
-        $trend = [];
-
-        for ($date = $trendStart; $date->lte($trendEnd); $date = $date->addDay()) {
-            $key = $date->toDateString();
-
-            $trend[] = [
-                'date' => $key,
-                'label' => $date->format('M d'),
-                'total_orders' => (int) ($rows[$key]->total_orders ?? 0),
-            ];
-        }
-
-        return $trend;
+        return [
+            'page' => $page,
+            'perPage' => $perPage,
+            'offset' => ($page - 1) * $perPage,
+        ];
     }
 
-    protected function resolveStatsDateRange(Request $request): array
+    protected function resolveDateRange(Request $request): array
     {
-        if ($request->filled('date_from') || $request->filled('date_to')) {
-            $startDate = $request->filled('date_from')
-                ? CarbonImmutable::parse($request->string('date_from')->toString())->startOfDay()
-                : $this->asOfDate()->startOfMonth()->startOfDay();
+        $maxDate = CarbonImmutable::parse(self::MAX_REPORT_DATE);
+        $defaultStart = $maxDate->startOfMonth();
 
-            $endDate = $request->filled('date_to')
-                ? CarbonImmutable::parse($request->string('date_to')->toString())->endOfDay()
-                : $this->asOfDate()->endOfDay();
+        $startDate = $this->parseDateValue($request->query('startDate'), $defaultStart);
+        $endDate = $this->parseDateValue($request->query('endDate'), $maxDate);
 
-            if ($endDate->gt($this->asOfDate())) {
-                $endDate = $this->asOfDate()->endOfDay();
-            }
+        if ($startDate->greaterThan($maxDate)) {
+            $startDate = $defaultStart;
+        }
 
-            return [$startDate, $endDate];
+        if ($endDate->greaterThan($maxDate)) {
+            $endDate = $maxDate;
+        }
+
+        if ($startDate->greaterThan($endDate)) {
+            $startDate = $endDate;
         }
 
         return [
-            $this->asOfDate()->startOfMonth()->startOfDay(),
-            $this->asOfDate()->endOfDay(),
+            $startDate->startOfDay(),
+            $endDate->endOfDay(),
         ];
     }
 
-    protected function parseSorts(Request $request): array
+    protected function parseDateValue(mixed $value, CarbonImmutable $fallback): CarbonImmutable
     {
-        $allowed = [
-            'order_number',
-            'ordered_at',
-            'customer_name',
-            'channel',
-            'status',
-            'grand_total',
-            'employee_name',
-        ];
+        if (!is_string($value) || trim($value) === '') {
+            return $fallback;
+        }
 
-        $sortParam = trim($request->string('sort')->toString());
+        try {
+            return CarbonImmutable::parse($value);
+        } catch (Throwable) {
+            return $fallback;
+        }
+    }
 
-        if ($sortParam === '') {
+    protected function arrayQuery(Request $request, string $key): array
+    {
+        $value = $request->query($key, []);
+
+        if (is_string($value)) {
+            return array_values(array_filter(array_map('trim', explode(',', $value))));
+        }
+
+        if (!is_array($value)) {
             return [];
         }
 
-        $tokens = array_filter(array_map('trim', explode(',', $sortParam)));
-        $sorts = [];
-        $seen = [];
+        return array_values(array_filter(array_map('strval', $value)));
+    }
 
-        foreach ($tokens as $token) {
-            $direction = str_starts_with($token, '-') ? 'desc' : 'asc';
-            $key = ltrim($token, '+-');
-
-            if (!in_array($key, $allowed, true)) {
-                continue;
-            }
-
-            if (isset($seen[$key])) {
-                continue;
-            }
-
-            $seen[$key] = true;
-
-            $sorts[] = [
-                'key' => $key,
-                'direction' => $direction,
-            ];
-
-            if (count($sorts) === 2) {
-                break;
-            }
+    protected function formatReportingPeriodLabel(CarbonImmutable $startDate, CarbonImmutable $endDate): string
+    {
+        if ($startDate->year === $endDate->year) {
+            return $startDate->format('F j') . ' - ' . $endDate->format('F j, Y');
         }
 
-        return $sorts;
+        return $startDate->format('F j, Y') . ' - ' . $endDate->format('F j, Y');
     }
 
-    protected function applySort(Builder $query, string $key, string $direction): void
+    protected function getSalesSummary(CarbonImmutable $startDate, CarbonImmutable $endDate): array
     {
-        switch ($key) {
-            case 'order_number':
-                $query->orderBy('sales_orders.order_number', $direction);
-                break;
+        $baseQuery = DB::table('sales_orders')
+            ->whereBetween('ordered_at', [$startDate, $endDate]);
 
-            case 'ordered_at':
-                $query->orderBy('sales_orders.ordered_at', $direction);
-                break;
+        return [
+            'totalOrders' => (int) (clone $baseQuery)->count(),
+            'openOrders' => (int) (clone $baseQuery)
+                ->whereIn('status', ['pending', 'confirmed', 'shipped'])
+                ->count(),
+            'completedOrders' => (int) (clone $baseQuery)
+                ->where('status', 'delivered')
+                ->count(),
+            'totalValue' => round((float) (clone $baseQuery)->sum('grand_total'), 2),
+            'attentionOrders' => (int) (clone $baseQuery)
+                ->whereIn('status', ['cancelled', 'returned', 'refunded'])
+                ->count(),
+        ];
+    }
 
-            case 'customer_name':
-                $query->orderBy('customer_sort_name', $direction);
-                break;
+    protected function getPurchaseSummary(CarbonImmutable $startDate, CarbonImmutable $endDate): array
+    {
+        $baseQuery = DB::table('purchase_orders')
+            ->whereBetween('ordered_at', [$startDate->toDateString(), $endDate->toDateString()]);
 
-            case 'channel':
-                $query->orderBy('sales_orders.channel', $direction);
-                break;
+        return [
+            'totalOrders' => (int) (clone $baseQuery)->count(),
+            'openOrders' => (int) (clone $baseQuery)
+                ->whereIn('status', ['draft', 'issued', 'transit'])
+                ->count(),
+            'completedOrders' => (int) (clone $baseQuery)
+                ->where('status', 'fulfilled')
+                ->count(),
+            'totalValue' => round((float) (clone $baseQuery)->sum('total_cost'), 2),
+            'attentionOrders' => (int) (clone $baseQuery)
+                ->whereIn('status', ['issued', 'transit'])
+                ->whereNotNull('expected_at')
+                ->whereDate('expected_at', '<', $endDate->toDateString())
+                ->count(),
+        ];
+    }
 
-            case 'status':
-                $query->orderBy('sales_orders.status', $direction);
-                break;
+    protected function getRecentSalesOrders(
+        CarbonImmutable $startDate,
+        CarbonImmutable $endDate,
+        array $filters,
+        array $pagination
+    ): array {
+        $itemSummary = DB::table('sales_order_items')
+            ->select([
+                'sales_order_id',
+                DB::raw('COUNT(*) as item_count'),
+                DB::raw('SUM(qty) as total_quantity'),
+            ])
+            ->groupBy('sales_order_id');
 
-            case 'grand_total':
-                $query->orderBy('sales_orders.grand_total', $direction);
-                break;
+        $query = DB::table('sales_orders')
+            ->leftJoin('customers', 'sales_orders.customer_id', '=', 'customers.id')
+            ->leftJoin('employees', 'sales_orders.employee_id', '=', 'employees.id')
+            ->leftJoinSub($itemSummary, 'item_summary', function ($join) {
+                $join->on('sales_orders.id', '=', 'item_summary.sales_order_id');
+            })
+            ->whereBetween('sales_orders.ordered_at', [$startDate, $endDate]);
 
-            case 'employee_name':
-                $query->orderBy('employee_sort_name', $direction);
-                break;
-
-            default:
-                $query->orderBy('sales_orders.ordered_at', 'desc');
-                break;
+        $statuses = array_values(array_intersect($filters['statuses'] ?? [], self::SALES_STATUSES));
+        if ($statuses) {
+            $query->whereIn('sales_orders.status', $statuses);
         }
+
+        $channels = array_values(array_intersect($filters['channels'] ?? [], self::SALES_CHANNELS));
+        if ($channels) {
+            $query->whereIn('sales_orders.channel', $channels);
+        }
+
+        $search = $filters['search'] ?? '';
+        if ($search !== '') {
+            $like = '%' . $search . '%';
+
+            $query->where(function ($query) use ($like) {
+                $query->where('sales_orders.so_number', 'like', $like)
+                    ->orWhere('sales_orders.contact_name', 'like', $like)
+                    ->orWhere('sales_orders.contact_phone', 'like', $like)
+                    ->orWhere('customers.first_name', 'like', $like)
+                    ->orWhere('customers.last_name', 'like', $like)
+                    ->orWhere('customers.business_name', 'like', $like)
+                    ->orWhere('customers.email', 'like', $like);
+            });
+        }
+
+        $total = (clone $query)->count();
+
+        $orders = $query
+            ->select([
+                'sales_orders.id',
+                'sales_orders.so_number as order_number',
+                'sales_orders.channel',
+                'sales_orders.status',
+                'sales_orders.payment_status',
+                'sales_orders.ordered_at',
+                'sales_orders.completed_at',
+                'sales_orders.grand_total as total_value',
+                DB::raw("COALESCE(NULLIF(sales_orders.contact_name, ''), NULLIF(customers.business_name, ''), NULLIF(TRIM(CONCAT(COALESCE(customers.first_name, ''), ' ', COALESCE(customers.last_name, ''))), ''), 'Unknown customer') as counterparty_name"),
+                DB::raw("NULLIF(TRIM(CONCAT(COALESCE(employees.first_name, ''), ' ', COALESCE(employees.last_name, ''))), '') as owner_name"),
+                DB::raw('COALESCE(item_summary.item_count, 0) as item_count'),
+                DB::raw('COALESCE(item_summary.total_quantity, 0) as total_quantity'),
+            ])
+            ->orderByDesc('sales_orders.ordered_at')
+            ->orderByDesc('sales_orders.id')
+            ->offset($pagination['offset'])
+            ->limit($pagination['perPage'])
+            ->get()
+            ->map(function ($row) {
+                return [
+                    'id' => (int) $row->id,
+                    'type' => 'sales',
+                    'orderNumber' => $row->order_number,
+                    'counterpartyName' => $row->counterparty_name,
+                    'counterpartyMeta' => $row->owner_name ? 'Sales: ' . $row->owner_name : null,
+                    'date' => $row->ordered_at ? CarbonImmutable::parse($row->ordered_at)->toDateString() : null,
+                    'status' => $row->status,
+                    'paymentStatus' => $row->payment_status,
+                    'channel' => $row->channel,
+                    'expectedAt' => null,
+                    'receivedAt' => $row->completed_at ? CarbonImmutable::parse($row->completed_at)->toDateString() : null,
+                    'itemCount' => (int) $row->item_count,
+                    'totalQuantity' => (int) $row->total_quantity,
+                    'totalValue' => round((float) $row->total_value, 2),
+                ];
+            })
+            ->toArray();
+
+        return [
+            'orders' => $orders,
+            'pagination' => $this->paginationPayload($pagination['page'], $pagination['perPage'], $total),
+        ];
     }
 
-    protected function customerSortSql(): string
-    {
-        return "COALESCE(
-            NULLIF(TRIM(customers.business_name), ''),
-            NULLIF(TRIM(CONCAT(COALESCE(customers.first_name, ''), ' ', COALESCE(customers.last_name, ''))), ''),
-            NULLIF(TRIM(customers.email), '')
-        )";
+    protected function getRecentPurchaseOrders(
+        CarbonImmutable $startDate,
+        CarbonImmutable $endDate,
+        array $filters,
+        array $pagination
+    ): array {
+        $itemSummary = DB::table('purchase_order_items')
+            ->select([
+                'purchase_order_id',
+                DB::raw('COUNT(*) as item_count'),
+                DB::raw('SUM(ordered_qty) as total_quantity'),
+            ])
+            ->groupBy('purchase_order_id');
+
+        $query = DB::table('purchase_orders')
+            ->leftJoin('suppliers', 'purchase_orders.supplier_id', '=', 'suppliers.id')
+            ->leftJoinSub($itemSummary, 'item_summary', function ($join) {
+                $join->on('purchase_orders.id', '=', 'item_summary.purchase_order_id');
+            })
+            ->whereBetween('purchase_orders.ordered_at', [$startDate->toDateString(), $endDate->toDateString()]);
+
+        $statuses = array_values(array_intersect($filters['statuses'] ?? [], self::PURCHASE_STATUSES));
+        if ($statuses) {
+            $query->whereIn('purchase_orders.status', $statuses);
+        }
+
+        $supplierIds = array_values(array_filter(array_map('intval', $filters['suppliers'] ?? [])));
+        if ($supplierIds) {
+            $query->whereIn('purchase_orders.supplier_id', $supplierIds);
+        }
+
+        $search = $filters['search'] ?? '';
+        if ($search !== '') {
+            $like = '%' . $search . '%';
+
+            $query->where(function ($query) use ($like) {
+                $query->where('purchase_orders.po_number', 'like', $like)
+                    ->orWhere('suppliers.name', 'like', $like)
+                    ->orWhere('suppliers.contact_person', 'like', $like)
+                    ->orWhere('suppliers.email', 'like', $like);
+            });
+        }
+
+        $total = (clone $query)->count();
+
+        $orders = $query
+            ->select([
+                'purchase_orders.id',
+                'purchase_orders.po_number as order_number',
+                'purchase_orders.status',
+                'purchase_orders.ordered_at',
+                'purchase_orders.expected_at',
+                'purchase_orders.received_at',
+                'purchase_orders.total_cost as total_value',
+                'suppliers.name as supplier_name',
+                'suppliers.contact_person',
+                DB::raw('COALESCE(item_summary.item_count, 0) as item_count'),
+                DB::raw('COALESCE(item_summary.total_quantity, 0) as total_quantity'),
+            ])
+            ->orderByDesc('purchase_orders.ordered_at')
+            ->orderByDesc('purchase_orders.id')
+            ->offset($pagination['offset'])
+            ->limit($pagination['perPage'])
+            ->get()
+            ->map(function ($row) {
+                return [
+                    'id' => (int) $row->id,
+                    'type' => 'purchase',
+                    'orderNumber' => $row->order_number,
+                    'counterpartyName' => $row->supplier_name ?? 'Unknown supplier',
+                    'counterpartyMeta' => $row->contact_person ? 'Contact: ' . $row->contact_person : null,
+                    'date' => $row->ordered_at ? CarbonImmutable::parse($row->ordered_at)->toDateString() : null,
+                    'status' => $row->status,
+                    'paymentStatus' => null,
+                    'channel' => null,
+                    'expectedAt' => $row->expected_at ? CarbonImmutable::parse($row->expected_at)->toDateString() : null,
+                    'receivedAt' => $row->received_at ? CarbonImmutable::parse($row->received_at)->toDateString() : null,
+                    'itemCount' => (int) $row->item_count,
+                    'totalQuantity' => (int) $row->total_quantity,
+                    'totalValue' => round((float) $row->total_value, 2),
+                ];
+            })
+            ->toArray();
+
+        return [
+            'orders' => $orders,
+            'pagination' => $this->paginationPayload($pagination['page'], $pagination['perPage'], $total),
+        ];
     }
 
-    protected function employeeSortSql(): string
+    protected function paginationPayload(int $page, int $perPage, int $total): array
     {
-        return "NULLIF(TRIM(CONCAT(COALESCE(employees.first_name, ''), ' ', COALESCE(employees.last_name, ''))), '')";
+        $lastPage = max((int) ceil($total / $perPage), 1);
+        $from = $total === 0 ? 0 : (($page - 1) * $perPage) + 1;
+        $to = min($page * $perPage, $total);
+
+        return [
+            'currentPage' => $page,
+            'perPage' => $perPage,
+            'total' => $total,
+            'lastPage' => $lastPage,
+            'from' => $from,
+            'to' => $to,
+        ];
     }
 
-    protected function asOfDate(): CarbonImmutable
+    protected function getSalesOrderDetail(int $id): ?array
     {
-        return CarbonImmutable::parse(self::AS_OF_DATE);
+        $order = DB::table('sales_orders')
+            ->leftJoin('customers', 'sales_orders.customer_id', '=', 'customers.id')
+            ->leftJoin('employees', 'sales_orders.employee_id', '=', 'employees.id')
+            ->where('sales_orders.id', $id)
+            ->select([
+                'sales_orders.*',
+                'customers.email as customer_email',
+                'customers.phone as customer_phone',
+                'customers.business_name',
+                DB::raw("COALESCE(NULLIF(sales_orders.contact_name, ''), NULLIF(customers.business_name, ''), NULLIF(TRIM(CONCAT(COALESCE(customers.first_name, ''), ' ', COALESCE(customers.last_name, ''))), ''), 'Unknown customer') as customer_name"),
+                DB::raw("NULLIF(TRIM(CONCAT(COALESCE(employees.first_name, ''), ' ', COALESCE(employees.last_name, ''))), '') as employee_name"),
+            ])
+            ->first();
+
+        if (!$order) {
+            return null;
+        }
+
+        $items = DB::table('sales_order_items')
+            ->join('products', 'sales_order_items.product_id', '=', 'products.id')
+            ->leftJoin('brands', 'products.brand_id', '=', 'brands.id')
+            ->where('sales_order_items.sales_order_id', $id)
+            ->select([
+                'sales_order_items.id',
+                'sales_order_items.product_id',
+                'products.title',
+                'products.internal_sku',
+                'products.model_number',
+                'brands.name as brand_name',
+                'sales_order_items.qty',
+                'sales_order_items.unit_price',
+                'sales_order_items.discount_amount',
+                'sales_order_items.final_unit_price',
+                'sales_order_items.cost_basis',
+                'sales_order_items.min_allowed_price',
+                'sales_order_items.commission_per_unit',
+                'sales_order_items.commission_total',
+                'sales_order_items.line_subtotal',
+                'sales_order_items.line_total',
+                'sales_order_items.line_profit',
+            ])
+            ->orderBy('sales_order_items.id')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'id' => (int) $item->id,
+                    'productId' => (int) $item->product_id,
+                    'productTitle' => $item->title,
+                    'sku' => $item->internal_sku,
+                    'modelNumber' => $item->model_number,
+                    'brandName' => $item->brand_name,
+                    'quantity' => (int) $item->qty,
+                    'unitPrice' => round((float) $item->unit_price, 2),
+                    'discountAmount' => round((float) $item->discount_amount, 2),
+                    'finalUnitPrice' => round((float) $item->final_unit_price, 2),
+                    'costBasis' => round((float) $item->cost_basis, 2),
+                    'minAllowedPrice' => round((float) $item->min_allowed_price, 2),
+                    'commissionPerUnit' => round((float) $item->commission_per_unit, 2),
+                    'commissionTotal' => round((float) $item->commission_total, 2),
+                    'lineSubtotal' => round((float) $item->line_subtotal, 2),
+                    'lineTotal' => round((float) $item->line_total, 2),
+                    'lineProfit' => round((float) $item->line_profit, 2),
+                ];
+            })
+            ->toArray();
+
+        return [
+            'type' => 'sales',
+            'id' => (int) $order->id,
+            'orderNumber' => $order->so_number,
+            'status' => $order->status,
+            'paymentStatus' => $order->payment_status,
+            'channel' => $order->channel,
+            'orderedAt' => $order->ordered_at ? CarbonImmutable::parse($order->ordered_at)->toDateString() : null,
+            'completedAt' => $order->completed_at ? CarbonImmutable::parse($order->completed_at)->toDateString() : null,
+            'counterpartyName' => $order->customer_name,
+            'counterpartyEmail' => $order->customer_email,
+            'counterpartyPhone' => $order->contact_phone ?: $order->customer_phone,
+            'ownerName' => $order->employee_name,
+            'address' => [
+                'line1' => $order->delivery_address_line_1,
+                'line2' => $order->delivery_address_line_2,
+                'city' => $order->delivery_city,
+                'state' => $order->delivery_state,
+                'postalCode' => $order->delivery_postal_code,
+                'country' => $order->delivery_country,
+            ],
+            'totals' => [
+                'subtotal' => round((float) $order->subtotal, 2),
+                'discountAmount' => round((float) $order->discount_amount, 2),
+                'taxAmount' => round((float) $order->tax_amount, 2),
+                'shippingAmount' => round((float) $order->shipping_fee, 2),
+                'otherAmount' => 0,
+                'grandTotal' => round((float) $order->grand_total, 2),
+            ],
+            'notes' => $order->notes,
+            'items' => $items,
+        ];
+    }
+
+    protected function getPurchaseOrderDetail(int $id): ?array
+    {
+        $order = DB::table('purchase_orders')
+            ->leftJoin('suppliers', 'purchase_orders.supplier_id', '=', 'suppliers.id')
+            ->where('purchase_orders.id', $id)
+            ->select([
+                'purchase_orders.*',
+                'suppliers.name as supplier_name',
+                'suppliers.contact_person',
+                'suppliers.email as supplier_email',
+                'suppliers.phone as supplier_phone',
+                'suppliers.address_line_1',
+                'suppliers.address_line_2',
+                'suppliers.city',
+                'suppliers.state',
+                'suppliers.postal_code',
+                'suppliers.country',
+            ])
+            ->first();
+
+        if (!$order) {
+            return null;
+        }
+
+        $items = DB::table('purchase_order_items')
+            ->join('products', 'purchase_order_items.product_id', '=', 'products.id')
+            ->leftJoin('brands', 'products.brand_id', '=', 'brands.id')
+            ->where('purchase_order_items.purchase_order_id', $id)
+            ->select([
+                'purchase_order_items.id',
+                'purchase_order_items.product_id',
+                'products.title',
+                'products.internal_sku',
+                'products.model_number',
+                'brands.name as brand_name',
+                'purchase_order_items.ordered_qty',
+                'purchase_order_items.unit_cost',
+                'purchase_order_items.line_total',
+            ])
+            ->orderBy('purchase_order_items.id')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'id' => (int) $item->id,
+                    'productId' => (int) $item->product_id,
+                    'productTitle' => $item->title,
+                    'sku' => $item->internal_sku,
+                    'modelNumber' => $item->model_number,
+                    'brandName' => $item->brand_name,
+                    'quantity' => (int) $item->ordered_qty,
+                    'unitCost' => round((float) $item->unit_cost, 2),
+                    'lineTotal' => round((float) $item->line_total, 2),
+                ];
+            })
+            ->toArray();
+
+        return [
+            'type' => 'purchase',
+            'id' => (int) $order->id,
+            'orderNumber' => $order->po_number,
+            'status' => $order->status,
+            'paymentStatus' => null,
+            'channel' => null,
+            'orderedAt' => $order->ordered_at ? CarbonImmutable::parse($order->ordered_at)->toDateString() : null,
+            'expectedAt' => $order->expected_at ? CarbonImmutable::parse($order->expected_at)->toDateString() : null,
+            'receivedAt' => $order->received_at ? CarbonImmutable::parse($order->received_at)->toDateString() : null,
+            'counterpartyName' => $order->supplier_name ?? 'Unknown supplier',
+            'counterpartyEmail' => $order->supplier_email,
+            'counterpartyPhone' => $order->supplier_phone,
+            'ownerName' => $order->contact_person,
+            'address' => [
+                'line1' => $order->address_line_1,
+                'line2' => $order->address_line_2,
+                'city' => $order->city,
+                'state' => $order->state,
+                'postalCode' => $order->postal_code,
+                'country' => $order->country,
+            ],
+            'totals' => [
+                'subtotal' => round((float) $order->subtotal, 2),
+                'discountAmount' => 0,
+                'taxAmount' => round((float) $order->tax_amount, 2),
+                'shippingAmount' => round((float) $order->shipping_cost, 2),
+                'otherAmount' => round((float) $order->other_cost, 2),
+                'grandTotal' => round((float) $order->total_cost, 2),
+            ],
+            'notes' => $order->notes,
+            'items' => $items,
+        ];
+    }
+
+    protected function getSupplierOptions(): array
+    {
+        return DB::table('suppliers')
+            ->where('is_active', true)
+            ->select([
+                'id',
+                'name',
+            ])
+            ->orderBy('name')
+            ->get()
+            ->map(function ($supplier) {
+                return [
+                    'id' => (int) $supplier->id,
+                    'name' => $supplier->name,
+                ];
+            })
+            ->toArray();
     }
 }
