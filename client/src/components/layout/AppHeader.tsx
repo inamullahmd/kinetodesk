@@ -21,6 +21,20 @@ function getPageMeta(pathname: string) {
     }
   }
 
+  if (pathname.startsWith('/inventory')) {
+    return {
+      title: 'Inventory',
+      subtitle: 'Stock, alerts, and product availability',
+    }
+  }
+
+  if (pathname.startsWith('/customers')) {
+    return {
+      title: 'Customers',
+      subtitle: 'Customer geography and sales activity',
+    }
+  }
+
   return {
     title: 'Overview',
     subtitle: 'Business summary and activity',

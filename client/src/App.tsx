@@ -5,6 +5,7 @@ import OrdersPage from './pages/orders/OrdersPage'
 import InventoryOverviewPage from './pages/inventory/InventoryOverviewPage'
 import InventoryProductsPage from './pages/inventory/InventoryProductsPage'
 import InventoryAlertsPage from './pages/inventory/InventoryAlertsPage'
+import CustomersPage from './pages/customers/CustomersPage'
 
 export default function App() {
   return (
@@ -15,9 +16,11 @@ export default function App() {
         <Route path="/dashboard" element={<OverviewPage />} />
         <Route path="/orders" element={<OrdersPage />} />
 
-<Route path="/inventory" element={<InventoryOverviewPage />} />
-<Route path="/inventory/products" element={<InventoryProductsPage />} />
-<Route path="/inventory/alerts" element={<InventoryAlertsPage />} />
+        <Route path="/inventory" element={<InventoryOverviewPage />} />
+        <Route path="/inventory/products" element={<InventoryProductsPage />} />
+        <Route path="/inventory/alerts" element={<InventoryAlertsPage />} />
+        <Route path="/customers" element={<CustomersPage />} />
+
       </Route>
     </Routes>
   )

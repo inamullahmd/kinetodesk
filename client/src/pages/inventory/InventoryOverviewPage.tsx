@@ -30,25 +30,14 @@ export default function InventoryOverviewPage() {
   }, [])
 
   useEffect(() => {
-    setHeaderRange({
-      startDate: dateRange.startDate,
-      endDate: dateRange.endDate,
-      label: formatDateRangeLabel(dateRange.startDate, dateRange.endDate),
-    })
+  setHeaderRange(null)
+  setHeaderDateRangeControl(null)
 
-    setHeaderDateRangeControl({
-      enabled: true,
-      startDate: dateRange.startDate,
-      endDate: dateRange.endDate,
-      maxDate: INVENTORY_MAX_DATE,
-      onChange: updateDateRange,
-    })
-
-    return () => {
-      setHeaderRange(null)
-      setHeaderDateRangeControl(null)
-    }
-  }, [dateRange.startDate, dateRange.endDate, setHeaderRange, setHeaderDateRangeControl, updateDateRange])
+  return () => {
+    setHeaderRange(null)
+    setHeaderDateRangeControl(null)
+  }
+}, [setHeaderRange, setHeaderDateRangeControl])
 
   useEffect(() => {
     let active = true

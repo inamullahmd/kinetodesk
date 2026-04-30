@@ -10,6 +10,7 @@ import {
   ShoppingCart,
   Table2,
   UserCircle,
+  UsersRound,
   WalletCards,
 } from 'lucide-react'
 import { NavLink, useLocation } from 'react-router-dom'
@@ -163,13 +164,6 @@ export default function AppSidebar({ theme }: AppSidebarProps) {
           theme={theme}
         />
 
-        <SidebarLink
-          label="Orders"
-          to="/orders"
-          icon={<ShoppingCart size={19} />}
-          theme={theme}
-        />
-
         <div>
           <button
             type="button"
@@ -221,7 +215,19 @@ export default function AppSidebar({ theme }: AppSidebarProps) {
           ) : null}
         </div>
 
-        
+        <SidebarLink
+          label="Orders"
+          to="/orders"
+          icon={<ShoppingCart size={19} />}
+          theme={theme}
+        />
+
+        <SidebarLink
+          label="Customers"
+          to="/customers"
+          icon={<UsersRound size={19} />}
+          theme={theme}
+        />
 
         <SidebarLink
           label="Calendar"

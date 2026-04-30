@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\api\DashboardController;
 use App\Http\Controllers\api\OrdersController;
+use App\Http\Controllers\api\CustomersController;
 use App\Http\Controllers\api\InventoryController;
 /*
 |--------------------------------------------------------------------------
@@ -30,3 +31,6 @@ Route::get('/inventory/overview', [InventoryController::class, 'overview']);
 Route::get('/inventory/products', [InventoryController::class, 'products']);
 Route::get('/inventory/products/{id}', [InventoryController::class, 'productDetail']);
 Route::get('/inventory/alerts', [InventoryController::class, 'alerts']);
+
+Route::get('/customers', [CustomersController::class, 'index']);
+Route::get('/customers/{id}', [CustomersController::class, 'show']);
