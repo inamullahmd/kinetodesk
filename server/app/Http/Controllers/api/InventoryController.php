@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\api;
 
 use App\Http\Controllers\Controller;
+use App\Support\AppliesMultiColumnSorting;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -11,6 +12,8 @@ use Throwable;
 
 class InventoryController extends Controller
 {
+    use AppliesMultiColumnSorting;
+
     private const MAX_REPORT_DATE = '2026-03-31';
 
     public function overview(Request $request): JsonResponse
@@ -319,9 +322,30 @@ class InventoryController extends Controller
 
         $total = (clone $query)->count();
 
-        $rows = $query
-            ->select($this->productSelectColumns())
-            ->orderBy('products.title')
+        $rowsQuery = $query->select($this->productSelectColumns());
+
+        $productAllowedSorts = [
+            'product' => 'products.title',
+            'sku' => 'products.internal_sku',
+            'brand' => 'brands.name',
+            'category' => fn ($query, string $direction) => $query->orderByRaw("COALESCE(parent_category.name, product_category.name, 'Uncategorized') {$direction}"),
+            'currentStock' => fn ($query, string $direction) => $query->orderByRaw("COALESCE(stock_summary.stock_qty, 0) {$direction}"),
+            'stockValue' => fn ($query, string $direction) => $query->orderByRaw("COALESCE(stock_summary.inventory_value, 0) {$direction}"),
+            'avgUnitCost' => fn ($query, string $direction) => $query->orderByRaw("COALESCE(stock_summary.avg_unit_cost, 0) {$direction}"),
+            'lastSoldAt' => function ($query, string $direction) {
+                $query
+                    ->orderByRaw("CASE WHEN last_sales.last_sold_at IS NULL THEN 1 ELSE 0 END ASC")
+                    ->orderBy('last_sales.last_sold_at', $direction);
+            },
+            'status' => fn ($query, string $direction) => $this->orderByProductStatus($query, $direction, 'stock_summary.stock_qty'),
+        ];
+
+        $this->applySorts($rowsQuery, request(), $productAllowedSorts, [
+            ['field' => 'product', 'direction' => 'asc'],
+        ]);
+
+        $rows = $rowsQuery
+            ->orderBy('products.id')
             ->offset($pagination['offset'])
             ->limit($pagination['perPage'])
             ->get()
@@ -364,10 +388,31 @@ class InventoryController extends Controller
 
         $total = (clone $query)->count();
 
-        $rows = $query
-            ->select($this->productSelectColumns())
-            ->orderByRaw('COALESCE(stock_summary.stock_qty, 0) asc')
-            ->orderBy('products.title')
+        $rowsQuery = $query->select($this->productSelectColumns());
+
+        $alertAllowedSorts = [
+            'product' => 'products.title',
+            'sku' => 'products.internal_sku',
+            'brand' => 'brands.name',
+            'category' => fn ($query, string $direction) => $query->orderByRaw("COALESCE(parent_category.name, product_category.name, 'Uncategorized') {$direction}"),
+            'currentStock' => fn ($query, string $direction) => $query->orderByRaw("COALESCE(stock_summary.stock_qty, 0) {$direction}"),
+            'stockValue' => fn ($query, string $direction) => $query->orderByRaw("COALESCE(stock_summary.inventory_value, 0) {$direction}"),
+            'avgUnitCost' => fn ($query, string $direction) => $query->orderByRaw("COALESCE(stock_summary.avg_unit_cost, 0) {$direction}"),
+            'lastSoldAt' => function ($query, string $direction) {
+                $query
+                    ->orderByRaw("CASE WHEN last_sales.last_sold_at IS NULL THEN 1 ELSE 0 END ASC")
+                    ->orderBy('last_sales.last_sold_at', $direction);
+            },
+            'status' => fn ($query, string $direction) => $this->orderByProductStatus($query, $direction, 'stock_summary.stock_qty'),
+        ];
+
+        $this->applySorts($rowsQuery, request(), $alertAllowedSorts, [
+            ['field' => 'currentStock', 'direction' => 'asc'],
+            ['field' => 'product', 'direction' => 'asc'],
+        ]);
+
+        $rows = $rowsQuery
+            ->orderBy('products.id')
             ->offset($pagination['offset'])
             ->limit($pagination['perPage'])
             ->get()

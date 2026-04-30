@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Eye, X } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { Eye } from 'lucide-react'
 import { useOutletContext } from 'react-router-dom'
 import ChartToggle from '../../components/dashboard/ChartToggle'
 import SectionCard from '../../components/dashboard/SectionCard'
 import StatCard from '../../components/dashboard/StatCard'
+import RightDrawer from '../../components/common/RightDrawer'
+import SortableHeader from '../../components/common/SortableHeader'
+import DedicatedEntitySearch from '../../components/search/DedicatedEntitySearch'
 import { getOrderDetail, getOrdersOverview } from '../../api/orders'
 import type { DashboardOutletContext } from '../../layouts/DashboardLayout'
+import type { LookupResult } from '../../types/lookup'
 import type {
   OrderDetail,
   OrderType,
@@ -14,11 +19,8 @@ import type {
   RecentOrder,
   SalesOrderDetailItem,
 } from '../../types/orders'
-import {
-  formatCompactNumber,
-  formatCurrency,
-  formatNumber,
-} from '../../utils/format'
+import { useMultiSort } from '../../hooks/useMultiSort'
+import { formatCompactNumber, formatCurrency, formatNumber } from '../../utils/format'
 
 const ORDERS_MAX_DATE = '2026-03-31'
 
@@ -139,10 +141,10 @@ function StatusBadge({
 
   return (
     <span
-      className={[
-        'inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1',
-        getStatusClass(value, isDark),
-      ].join(' ')}
+      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${getStatusClass(
+        value,
+        isDark,
+      )}`}
     >
       {formatEnumLabel(value)}
     </span>
@@ -155,19 +157,14 @@ function FilterLabel({
   variant,
 }: {
   label: string
-  children: React.ReactNode
+  children: ReactNode
   variant: 'light' | 'dark'
 }) {
   const isDark = variant === 'dark'
 
   return (
-    <label className="flex min-w-0 flex-col gap-1.5">
-      <span
-        className={[
-          'text-xs font-semibold uppercase tracking-[0.1em]',
-          isDark ? 'text-slate-500' : 'text-slate-400',
-        ].join(' ')}
-      >
+    <label className="flex flex-col gap-1">
+      <span className={`text-xs font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
         {label}
       </span>
       {children}
@@ -199,16 +196,13 @@ function CheckboxGroup({
     onChange([...selected, value])
   }
 
+  if (!options.length) return null
+
   return (
-    <div>
-      <div
-        className={[
-          'mb-2 text-xs font-semibold uppercase tracking-[0.1em]',
-          isDark ? 'text-slate-500' : 'text-slate-400',
-        ].join(' ')}
-      >
+    <div className="space-y-2">
+      <p className={`text-xs font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
         {label}
-      </div>
+      </p>
 
       <div className="flex flex-wrap gap-2">
         {options.map((option) => {
@@ -301,7 +295,7 @@ function PaginationControls({
   ].join(' ')
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex items-center gap-2">
       <button
         type="button"
         disabled={currentPage <= 1}
@@ -316,10 +310,7 @@ function PaginationControls({
           return (
             <span
               key={item}
-              className={[
-                'inline-flex h-10 min-w-10 items-center justify-center text-sm font-semibold',
-                isDark ? 'text-slate-600' : 'text-slate-400',
-              ].join(' ')}
+              className={`px-2 text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}
             >
               ...
             </span>
@@ -353,23 +344,17 @@ function PaginationControls({
 }
 
 export default function OrdersPage() {
-  const {
-    setHeaderRange,
-    setHeaderDateRangeControl,
-    theme,
-  } = useOutletContext<DashboardOutletContext>()
+  const { setHeaderRange, setHeaderDateRangeControl, theme } =
+    useOutletContext<DashboardOutletContext>()
 
   const [orderType, setOrderType] = useState<OrderType>('sales')
   const [dateRange, setDateRange] = useState(DEFAULT_DATE_RANGE)
-
   const [search, setSearch] = useState('')
   const [statuses, setStatuses] = useState<string[]>([])
   const [channels, setChannels] = useState<string[]>([])
   const [supplier, setSupplier] = useState('all')
-
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
-
   const [data, setData] = useState<OrdersResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -377,6 +362,11 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<OrderDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
+
+  const { sortParam, cycleSort, getSort, getSortIndex } = useMultiSort(
+    [{ field: 'date', direction: 'desc' }],
+    { onChange: () => setPage(1) },
+  )
 
   const isDark = theme === 'dark'
 
@@ -439,10 +429,10 @@ export default function OrdersPage() {
           suppliers: supplier === 'all' ? [] : [supplier],
           page,
           perPage,
+          sort: sortParam,
         })
 
         if (!active) return
-
         setData(response)
       } catch {
         if (!active) return
@@ -469,11 +459,55 @@ export default function OrdersPage() {
     supplier,
     page,
     perPage,
+    sortParam,
   ])
+
+  async function openOrderById(type: OrderType, id: number) {
+    try {
+      setDetailLoading(true)
+      setDetailError(null)
+      setSelectedOrder(null)
+
+      const response = await getOrderDetail(type, id)
+      setSelectedOrder(response)
+    } catch {
+      setDetailError('Failed to load order details.')
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  function openOrderDetail(order: RecentOrder) {
+    void openOrderById(order.type, order.id)
+  }
+
+  function openLookupOrder(result: LookupResult) {
+    if (result.type === 'sales' || result.type === 'purchase') {
+      void openOrderById(result.type, result.id)
+    }
+  }
+
+  function resetFilters() {
+    setSearch('')
+    setStatuses([])
+    setChannels([])
+    setSupplier('all')
+    updateDateRange(DEFAULT_DATE_RANGE)
+    setPage(1)
+  }
+
+  const filterOptions = useMemo(
+    () =>
+      data?.filterOptions ?? {
+        statuses: [],
+        channels: [],
+        suppliers: [],
+      },
+    [data],
+  )
 
   const summary = data?.summary
   const pagination = data?.pagination
-
   const attentionLabel = orderType === 'sales' ? 'Exceptions' : 'Overdue'
   const completedLabel = orderType === 'sales' ? 'Delivered' : 'Fulfilled'
   const counterpartyLabel = orderType === 'sales' ? 'Customer' : 'Supplier'
@@ -486,45 +520,11 @@ export default function OrdersPage() {
       : 'border-slate-200 bg-white text-slate-700 placeholder:text-slate-400 focus:border-blue-500',
   ].join(' ')
 
-  function resetFilters() {
-    setSearch('')
-    setStatuses([])
-    setChannels([])
-    setSupplier('all')
-    updateDateRange(DEFAULT_DATE_RANGE)
-    setPage(1)
-  }
-
-  async function openOrderDetail(order: RecentOrder) {
-    try {
-      setDetailLoading(true)
-      setDetailError(null)
-      setSelectedOrder(null)
-
-      const response = await getOrderDetail(order.type, order.id)
-      setSelectedOrder(response)
-    } catch {
-      setDetailError('Failed to load order details.')
-    } finally {
-      setDetailLoading(false)
-    }
-  }
-
-  const filterOptions = useMemo(
-    () =>
-      data?.filterOptions ?? {
-        statuses: [],
-        channels: [],
-        suppliers: [],
-      },
-    [data]
-  )
-
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <div className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
         <div>
-          <h1 className={`text-xl font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
+          <h1 className={`text-3xl font-semibold tracking-tight ${isDark ? 'text-white' : 'text-slate-950'}`}>
             Orders
           </h1>
           <p className={`mt-1 text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
@@ -543,317 +543,305 @@ export default function OrdersPage() {
         />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <DedicatedEntitySearch
+  entity={orderType === 'sales' ? 'sales-orders' : 'purchase-orders'}
+  placeholder={orderType === 'sales' ? 'Find SO across all dates...' : 'Find PO across all dates...'}
+  onOpenResult={openLookupOrder}
+  variant={theme}
+/>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <StatCard
           title="Total Orders"
-          value={summary ? formatNumber(summary.totalOrders) : '-'}
-          helperText="Selected period"
-          variant={theme}
+          value={formatCompactNumber(summary?.totalOrders ?? 0)}
+          helperText="Within selected date range"
           compact
+          variant={theme}
         />
-
         <StatCard
           title="Open Orders"
-          value={summary ? formatNumber(summary.openOrders) : '-'}
-          helperText={orderType === 'sales' ? 'Pending, confirmed, shipped' : 'Draft, issued, transit'}
-          variant={theme}
+          value={formatCompactNumber(summary?.openOrders ?? 0)}
+          helperText="Pending or in progress"
           compact
+          variant={theme}
         />
-
         <StatCard
           title={completedLabel}
-          value={summary ? formatNumber(summary.completedOrders) : '-'}
-          helperText={orderType === 'sales' ? 'Delivered orders' : 'Fulfilled orders'}
-          variant={theme}
+          value={formatCompactNumber(summary?.completedOrders ?? 0)}
+          helperText="Completed workflow"
           compact
-        />
-
-        <StatCard
-          title="Total Value"
-          value={summary ? formatCompactNumber(summary.totalValue) : '-'}
-          secondaryValue={summary ? formatCurrency(summary.totalValue) : undefined}
           variant={theme}
-          compact
-          monoSecondary
         />
-
         <StatCard
           title={attentionLabel}
-          value={summary ? formatNumber(summary.attentionOrders) : '-'}
-          helperText={orderType === 'sales' ? 'Cancelled, returned, refunded' : 'Past expected date'}
-          variant={theme}
+          value={formatCompactNumber(summary?.attentionOrders ?? 0)}
+          helperText="Needs review"
           compact
+          variant={theme}
         />
       </div>
 
       <SectionCard
-        title={orderType === 'sales' ? 'Recent Sales Orders' : 'Recent Purchase Orders'}
-        description="Use filters to narrow the order list. The date range is also synced with the app header."
+        title={`${orderType === 'sales' ? 'Sales' : 'Purchase'} Orders`}
+        description="Table search respects the selected date range. Direct lookup above ignores date filters."
         variant={theme}
+        action={
+          <div className={`text-sm font-semibold ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+            {formatCurrency(summary?.totalValue ?? 0)}
+          </div>
+        }
       >
-        <div className="space-y-5">
-          <div className="grid gap-4">
-            <div
-              className={[
-                'grid gap-3',
-                orderType === 'purchase'
-                  ? 'xl:grid-cols-[minmax(220px,1fr)_220px_160px_160px_160px_auto]'
-                  : 'xl:grid-cols-[minmax(220px,1fr)_160px_160px_160px_auto]',
-              ].join(' ')}
-            >
-              <FilterLabel label="Search" variant={theme}>
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(event) => {
-                    setSearch(event.target.value)
-                    setPage(1)
-                  }}
-                  placeholder={orderType === 'sales' ? 'Order, customer, phone...' : 'PO, supplier, contact...'}
-                  className={inputClass}
-                />
-              </FilterLabel>
+        <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-6">
+          <FilterLabel label="Search" variant={theme}>
+            <input
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value)
+                setPage(1)
+              }}
+              placeholder={orderType === 'sales' ? 'SO, customer, phone...' : 'PO, supplier, contact...'}
+              className={inputClass}
+            />
+          </FilterLabel>
 
-              {orderType === 'purchase' ? (
-                <FilterLabel label="Supplier" variant={theme}>
-                  <select
-                    value={supplier}
-                    onChange={(event) => {
-                      setSupplier(event.target.value)
-                      setPage(1)
-                    }}
-                    className={inputClass}
-                  >
-                    <option value="all">All suppliers</option>
-                    {filterOptions.suppliers.map((item) => (
-                      <option key={item.id} value={String(item.id)}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </FilterLabel>
-              ) : null}
-
-              <FilterLabel label="Start Date" variant={theme}>
-                <input
-                  type="date"
-                  value={dateRange.startDate}
-                  max={ORDERS_MAX_DATE}
-                  onChange={(event) =>
-                    updateDateRange({
-                      startDate: event.target.value,
-                      endDate: dateRange.endDate,
-                    })
-                  }
-                  className={inputClass}
-                />
-              </FilterLabel>
-
-              <FilterLabel label="End Date" variant={theme}>
-                <input
-                  type="date"
-                  value={dateRange.endDate}
-                  min={dateRange.startDate}
-                  max={ORDERS_MAX_DATE}
-                  onChange={(event) =>
-                    updateDateRange({
-                      startDate: dateRange.startDate,
-                      endDate: event.target.value,
-                    })
-                  }
-                  className={inputClass}
-                />
-              </FilterLabel>
-
-              <FilterLabel label="Rows" variant={theme}>
-                <select
-                  value={perPage}
-                  onChange={(event) => {
-                    setPerPage(Number(event.target.value))
-                    setPage(1)
-                  }}
-                  className={inputClass}
-                >
-                  <option value={10}>10 rows</option>
-                  <option value={15}>15 rows</option>
-                  <option value={25}>25 rows</option>
-                  <option value={50}>50 rows</option>
-                </select>
-              </FilterLabel>
-
-              <div className="flex items-end">
-                <button
-                  type="button"
-                  onClick={resetFilters}
-                  className={[
-                    'h-10 rounded-xl border px-4 text-sm font-semibold transition',
-                    isDark
-                      ? 'border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900'
-                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
-                  ].join(' ')}
-                >
-                  Reset
-                </button>
-              </div>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-2">
-              <CheckboxGroup
-                label="Statuses"
-                options={filterOptions.statuses.map((item) => ({
-                  label: formatEnumLabel(item),
-                  value: item,
-                }))}
-                selected={statuses}
-                onChange={(value) => {
-                  setStatuses(value)
+          {orderType === 'purchase' ? (
+            <FilterLabel label="Supplier" variant={theme}>
+              <select
+                value={supplier}
+                onChange={(event) => {
+                  setSupplier(event.target.value)
                   setPage(1)
                 }}
-                variant={theme}
-              />
+                className={inputClass}
+              >
+                <option value="all">All suppliers</option>
+                {filterOptions.suppliers.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </FilterLabel>
+          ) : null}
 
-              {orderType === 'sales' ? (
-                <CheckboxGroup
-                  label="Channels"
-                  options={filterOptions.channels.map((item) => ({
-                    label: formatEnumLabel(item),
-                    value: item,
-                  }))}
-                  selected={channels}
-                  onChange={(value) => {
-                    setChannels(value)
-                    setPage(1)
-                  }}
-                  variant={theme}
-                />
-              ) : null}
-            </div>
+          <FilterLabel label="Start" variant={theme}>
+            <input
+              type="date"
+              max={ORDERS_MAX_DATE}
+              value={dateRange.startDate}
+              onChange={(event) =>
+                updateDateRange({
+                  startDate: event.target.value,
+                  endDate: dateRange.endDate,
+                })
+              }
+              className={inputClass}
+            />
+          </FilterLabel>
+
+          <FilterLabel label="End" variant={theme}>
+            <input
+              type="date"
+              max={ORDERS_MAX_DATE}
+              value={dateRange.endDate}
+              onChange={(event) =>
+                updateDateRange({
+                  startDate: dateRange.startDate,
+                  endDate: event.target.value,
+                })
+              }
+              className={inputClass}
+            />
+          </FilterLabel>
+
+          <FilterLabel label="Rows" variant={theme}>
+            <select
+              value={perPage}
+              onChange={(event) => {
+                setPerPage(Number(event.target.value))
+                setPage(1)
+              }}
+              className={inputClass}
+            >
+              <option value={10}>10 rows</option>
+              <option value={15}>15 rows</option>
+              <option value={25}>25 rows</option>
+              <option value={50}>50 rows</option>
+            </select>
+          </FilterLabel>
+
+          <div className="flex items-end">
+            <button
+              type="button"
+              onClick={resetFilters}
+              className={[
+                'h-10 rounded-xl border px-4 text-sm font-semibold transition',
+                isDark
+                  ? 'border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+              ].join(' ')}
+            >
+              Reset
+            </button>
           </div>
+        </div>
 
-          <div
-            className={[
-              'overflow-hidden rounded-2xl border',
-              isDark ? 'border-slate-800' : 'border-slate-200',
-            ].join(' ')}
-          >
-            <div className="overflow-x-auto">
-              <table className="min-w-[1080px] w-full border-collapse">
-                <thead className={isDark ? 'bg-slate-950' : 'bg-slate-50'}>
-                  <tr>
-                    {[
-                      'Order',
-                      counterpartyLabel,
-                      'Date',
-                      'Status',
-                      sourceLabel,
-                      'Items',
-                      'Total',
-                      '',
-                    ].map((heading) => (
-                      <th
-                        key={heading || 'actions'}
-                        className={[
-                          'px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.1em]',
-                          heading === 'Total' ? 'text-right' : '',
-                          isDark ? 'text-slate-500' : 'text-slate-400',
-                        ].join(' ')}
-                      >
-                        {heading}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
+        <div className="mb-4 space-y-3">
+          <CheckboxGroup
+            label="Statuses"
+            options={filterOptions.statuses.map((item) => ({
+              label: formatEnumLabel(item),
+              value: item,
+            }))}
+            selected={statuses}
+            onChange={(value) => {
+              setStatuses(value)
+              setPage(1)
+            }}
+            variant={theme}
+          />
 
-                <tbody
-                  className={[
-                    'divide-y',
-                    isDark ? 'divide-slate-800 bg-slate-900' : 'divide-slate-100 bg-white',
-                  ].join(' ')}
-                >
-                  {loading ? (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className={`px-4 py-12 text-center text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
-                      >
-                        Loading orders...
-                      </td>
-                    </tr>
-                  ) : error ? (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className={`px-4 py-12 text-center text-sm ${isDark ? 'text-rose-300' : 'text-rose-600'}`}
-                      >
-                        {error}
-                      </td>
-                    </tr>
-                  ) : data?.recentOrders.length ? (
-                    data.recentOrders.map((order) => (
-                      <OrderTableRow
-                        key={`${order.type}-${order.id}`}
-                        order={order}
-                        orderType={orderType}
-                        variant={theme}
-                        onView={() => openOrderDetail(order)}
-                      />
-                    ))
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className={`px-4 py-12 text-center text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
-                      >
-                        No orders found for the selected filters.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {pagination ? (
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Showing{' '}
-                <span className="font-data font-semibold">
-                  {pagination.from}
-                </span>{' '}
-                to{' '}
-                <span className="font-data font-semibold">
-                  {pagination.to}
-                </span>{' '}
-                of{' '}
-                <span className="font-data font-semibold">
-                  {pagination.total}
-                </span>{' '}
-                orders
-              </div>
-
-              <PaginationControls
-                currentPage={pagination.currentPage}
-                lastPage={pagination.lastPage}
-                onPageChange={setPage}
-                variant={theme}
-              />
-            </div>
+          {orderType === 'sales' ? (
+            <CheckboxGroup
+              label="Channels"
+              options={filterOptions.channels.map((item) => ({
+                label: formatEnumLabel(item),
+                value: item,
+              }))}
+              selected={channels}
+              onChange={(value) => {
+                setChannels(value)
+                setPage(1)
+              }}
+              variant={theme}
+            />
           ) : null}
         </div>
+
+        <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
+              <thead className={isDark ? 'bg-slate-950' : 'bg-slate-50'}>
+                <tr>
+                  <SortableHeader
+                    label="Order"
+                    field="orderNumber"
+                    sort={getSort('orderNumber')}
+                    sortIndex={getSortIndex('orderNumber')}
+                    onSort={cycleSort}
+                  />
+                  <SortableHeader
+                    label={counterpartyLabel}
+                    field="counterpartyName"
+                    sort={getSort('counterpartyName')}
+                    sortIndex={getSortIndex('counterpartyName')}
+                    onSort={cycleSort}
+                  />
+                  <SortableHeader
+                    label="Date"
+                    field="date"
+                    sort={getSort('date')}
+                    sortIndex={getSortIndex('date')}
+                    onSort={cycleSort}
+                  />
+                  <SortableHeader
+                    label="Status"
+                    field="status"
+                    sort={getSort('status')}
+                    sortIndex={getSortIndex('status')}
+                    onSort={cycleSort}
+                  />
+                  <SortableHeader
+                    label={sourceLabel}
+                    field="source"
+                    sort={getSort('source')}
+                    sortIndex={getSortIndex('source')}
+                    onSort={cycleSort}
+                  />
+                  <SortableHeader
+                    label="Items"
+                    field="itemCount"
+                    sort={getSort('itemCount')}
+                    sortIndex={getSortIndex('itemCount')}
+                    onSort={cycleSort}
+                    align="right"
+                  />
+                  <SortableHeader
+                    label="Total"
+                    field="totalValue"
+                    sort={getSort('totalValue')}
+                    sortIndex={getSortIndex('totalValue')}
+                    onSort={cycleSort}
+                    align="right"
+                  />
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+
+              <tbody className={`divide-y ${isDark ? 'divide-slate-800 bg-slate-900' : 'divide-slate-100 bg-white'}`}>
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} className={`px-4 py-10 text-center text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Loading orders...
+                    </td>
+                  </tr>
+                ) : error ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-10 text-center text-sm text-rose-600">
+                      {error}
+                    </td>
+                  </tr>
+                ) : data?.recentOrders.length ? (
+                  data.recentOrders.map((order) => (
+                    <OrderTableRow
+                      key={`${order.type}-${order.id}`}
+                      order={order}
+                      orderType={orderType}
+                      variant={theme}
+                      onView={() => openOrderDetail(order)}
+                    />
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={8} className={`px-4 py-10 text-center text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      No orders found for the selected filters.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {pagination ? (
+          <div className="mt-4 flex flex-col justify-between gap-3 md:flex-row md:items-center">
+            <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              Showing <span className="font-semibold">{pagination.from}</span> to{' '}
+              <span className="font-semibold">{pagination.to}</span> of{' '}
+              <span className="font-semibold">{pagination.total}</span> orders
+            </p>
+
+            <PaginationControls
+              currentPage={pagination.currentPage}
+              lastPage={pagination.lastPage}
+              onPageChange={setPage}
+              variant={theme}
+            />
+          </div>
+        ) : null}
       </SectionCard>
 
-      {detailLoading || detailError || selectedOrder ? (
-        <OrderDetailModal
-          order={selectedOrder}
-          loading={detailLoading}
-          error={detailError}
-          onClose={() => {
-            setSelectedOrder(null)
-            setDetailError(null)
-          }}
-          variant={theme}
-        />
-      ) : null}
+      <OrderDetailDrawer
+        order={selectedOrder}
+        loading={detailLoading}
+        error={detailError}
+        open={detailLoading || Boolean(detailError) || Boolean(selectedOrder)}
+        onClose={() => {
+          setSelectedOrder(null)
+          setDetailError(null)
+        }}
+        variant={theme}
+      />
     </div>
   )
 }
@@ -872,60 +860,42 @@ function OrderTableRow({
   const isDark = variant === 'dark'
 
   return (
-    <tr className={isDark ? 'hover:bg-slate-800/60' : 'hover:bg-slate-50'}>
+    <tr className={isDark ? 'hover:bg-slate-950/70' : 'hover:bg-slate-50'}>
       <td className="px-4 py-4">
-        <div className={`font-data text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
-          {order.orderNumber}
-        </div>
-        <div className={`mt-1 text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+        <p className={`font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>{order.orderNumber}</p>
+        <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
           {orderType === 'sales' ? 'Sales Order' : 'Purchase Order'}
-        </div>
+        </p>
       </td>
-
       <td className="px-4 py-4">
-        <div className={`max-w-[260px] truncate text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
-          {order.counterpartyName}
-        </div>
+        <p className={`font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{order.counterpartyName}</p>
         {order.counterpartyMeta ? (
-          <div className={`mt-1 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-            {order.counterpartyMeta}
-          </div>
+          <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{order.counterpartyMeta}</p>
         ) : null}
       </td>
-
       <td className={`px-4 py-4 text-sm ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
         {formatDate(order.date)}
-      </td>
-
-      <td className="px-4 py-4">
-        <StatusBadge value={order.status} variant={variant} />
-
         {order.paymentStatus ? (
-          <div className={`mt-2 text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+          <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
             Payment: {formatEnumLabel(order.paymentStatus)}
-          </div>
+          </p>
         ) : null}
       </td>
-
-      <td className={`px-4 py-4 text-sm ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-        {orderType === 'sales'
-          ? formatEnumLabel(order.channel)
-          : formatDate(order.expectedAt)}
-      </td>
-
       <td className="px-4 py-4">
-        <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
-          {formatNumber(order.itemCount)} lines
-        </div>
-        <div className={`mt-1 text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-          {formatNumber(order.totalQuantity)} units
-        </div>
+        <StatusBadge value={order.status} variant={variant} />
       </td>
-
-      <td className={`px-4 py-4 text-right font-data text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
+      <td className={`px-4 py-4 text-sm ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+        {orderType === 'sales' ? formatEnumLabel(order.channel) : formatDate(order.expectedAt)}
+      </td>
+      <td className={`px-4 py-4 text-right text-sm ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+        <p>{formatNumber(order.itemCount)} lines</p>
+        <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+          {formatNumber(order.totalQuantity)} units
+        </p>
+      </td>
+      <td className={`px-4 py-4 text-right font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
         {formatCurrency(order.totalValue)}
       </td>
-
       <td className="px-4 py-4 text-right">
         <button
           type="button"
@@ -937,7 +907,7 @@ function OrderTableRow({
               : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
           ].join(' ')}
         >
-          <Eye size={15} />
+          <Eye className="h-4 w-4" />
           View
         </button>
       </td>
@@ -945,79 +915,43 @@ function OrderTableRow({
   )
 }
 
-function OrderDetailModal({
+function OrderDetailDrawer({
   order,
   loading,
   error,
+  open,
   onClose,
   variant,
 }: {
   order: OrderDetail | null
   loading: boolean
   error: string | null
+  open: boolean
   onClose: () => void
   variant: 'light' | 'dark'
 }) {
-  const isDark = variant === 'dark'
-
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-slate-950/40 backdrop-blur-sm">
-      <div
-        className={[
-          'h-full w-full max-w-[980px] overflow-y-auto border-l shadow-2xl',
-          isDark
-            ? 'border-slate-800 bg-slate-950 text-slate-100'
-            : 'border-slate-200 bg-white text-slate-900',
-        ].join(' ')}
-      >
-        <div
-          className={[
-            'sticky top-0 z-10 flex items-start justify-between gap-4 border-b px-6 py-5',
-            isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white',
-          ].join(' ')}
-        >
-          <div>
-            <h2 className="text-lg font-semibold">
-              {order ? order.orderNumber : 'Order Details'}
-            </h2>
-            <p className={`mt-1 text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              {order
-                ? order.type === 'sales'
-                  ? 'Sales order details and line items'
-                  : 'Purchase order details and line items'
-                : 'Loading order information'}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className={[
-              'rounded-full border p-2 transition',
-              isDark
-                ? 'border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800'
-                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
-            ].join(' ')}
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="p-6">
-          {loading ? (
-            <div className={`py-20 text-center text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              Loading order details...
-            </div>
-          ) : error ? (
-            <div className={`py-20 text-center text-sm ${isDark ? 'text-rose-300' : 'text-rose-600'}`}>
-              {error}
-            </div>
-          ) : order ? (
-            <OrderDetailContent order={order} variant={variant} />
-          ) : null}
-        </div>
-      </div>
-    </div>
+    <RightDrawer
+      open={open}
+      title={order ? order.orderNumber : 'Order Details'}
+      subtitle={
+        order
+          ? order.type === 'sales'
+            ? 'Sales order details and line items'
+            : 'Purchase order details and line items'
+          : 'Loading order information'
+      }
+      onClose={onClose}
+      widthClassName="max-w-5xl"
+    >
+      {loading ? (
+        <div className="rounded-2xl bg-slate-50 p-5 text-sm text-slate-500">Loading order details...</div>
+      ) : error ? (
+        <div className="rounded-2xl bg-rose-50 p-5 text-sm text-rose-700">{error}</div>
+      ) : order ? (
+        <OrderDetailContent order={order} variant={variant} />
+      ) : null}
+    </RightDrawer>
   )
 }
 
@@ -1027,22 +961,17 @@ function DetailInfoCard({
   variant,
 }: {
   title: string
-  children: React.ReactNode
+  children: ReactNode
   variant: 'light' | 'dark'
 }) {
   const isDark = variant === 'dark'
 
   return (
-    <div
-      className={[
-        'rounded-2xl border p-4',
-        isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-slate-50',
-      ].join(' ')}
-    >
-      <div className={`mb-3 text-xs font-semibold uppercase tracking-[0.12em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+    <div className={`rounded-2xl border p-4 ${isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-slate-50'}`}>
+      <p className={`text-xs font-semibold uppercase tracking-wide ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
         {title}
-      </div>
-      {children}
+      </p>
+      <div className={`mt-3 text-sm ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{children}</div>
     </div>
   )
 }
@@ -1055,6 +984,7 @@ function OrderDetailContent({
   variant: 'light' | 'dark'
 }) {
   const isDark = variant === 'dark'
+
   const addressParts = [
     order.address?.line1,
     order.address?.line2,
@@ -1065,107 +995,59 @@ function OrderDetailContent({
   ].filter(Boolean)
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 xl:grid-cols-3">
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <DetailInfoCard title={order.type === 'sales' ? 'Customer' : 'Supplier'} variant={variant}>
-          <div className="space-y-1">
-            <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
-              {order.counterpartyName}
-            </div>
-            {order.counterpartyEmail ? (
-              <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {order.counterpartyEmail}
-              </div>
-            ) : null}
-            {order.counterpartyPhone ? (
-              <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {formatPhoneNumber(order.counterpartyPhone)}
-              </div>
-            ) : null}
-            {order.ownerName ? (
-              <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {order.type === 'sales' ? 'Sales: ' : 'Contact: '}
-                {order.ownerName}
-              </div>
-            ) : null}
-          </div>
+          <p className={`font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>{order.counterpartyName}</p>
+          {order.counterpartyEmail ? <p>{order.counterpartyEmail}</p> : null}
+          {order.counterpartyPhone ? <p>{formatPhoneNumber(order.counterpartyPhone)}</p> : null}
+          {order.ownerName ? (
+            <p>{order.type === 'sales' ? 'Sales: ' : 'Contact: '} {order.ownerName}</p>
+          ) : null}
         </DetailInfoCard>
 
-        <DetailInfoCard title="Status" variant={variant}>
-          <div className="space-y-3">
+        <DetailInfoCard title="Order Status" variant={variant}>
+          <div className="space-y-2">
             <StatusBadge value={order.status} variant={variant} />
-            {order.paymentStatus ? (
-              <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Payment: {formatEnumLabel(order.paymentStatus)}
-              </div>
-            ) : null}
-            {order.channel ? (
-              <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Channel: {formatEnumLabel(order.channel)}
-              </div>
-            ) : null}
+            {order.paymentStatus ? <p>Payment: {formatEnumLabel(order.paymentStatus)}</p> : null}
+            {order.channel ? <p>Channel: {formatEnumLabel(order.channel)}</p> : null}
           </div>
         </DetailInfoCard>
 
         <DetailInfoCard title="Dates" variant={variant}>
-          <div className={`space-y-1 text-sm ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-            <div>Ordered: {formatDate(order.orderedAt)}</div>
-            {order.completedAt ? <div>Completed: {formatDate(order.completedAt)}</div> : null}
-            {order.expectedAt ? <div>Expected: {formatDate(order.expectedAt)}</div> : null}
-            {order.receivedAt ? <div>Received: {formatDate(order.receivedAt)}</div> : null}
-          </div>
+          <p>Ordered: {formatDate(order.orderedAt)}</p>
+          {order.completedAt ? <p>Completed: {formatDate(order.completedAt)}</p> : null}
+          {order.expectedAt ? <p>Expected: {formatDate(order.expectedAt)}</p> : null}
+          {order.receivedAt ? <p>Received: {formatDate(order.receivedAt)}</p> : null}
         </DetailInfoCard>
       </div>
 
       {addressParts.length ? (
-        <DetailInfoCard title={order.type === 'sales' ? 'Delivery Address' : 'Supplier Address'} variant={variant}>
-          <div className={`text-sm ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-            {addressParts.join(', ')}
-          </div>
+        <DetailInfoCard title="Address" variant={variant}>
+          {addressParts.join(', ')}
         </DetailInfoCard>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <TotalBox label="Subtotal" value={order.totals.subtotal} variant={variant} />
         <TotalBox label="Discount" value={order.totals.discountAmount} variant={variant} />
         <TotalBox label="Tax" value={order.totals.taxAmount} variant={variant} />
-        <TotalBox label="Shipping" value={order.totals.shippingAmount} variant={variant} />
-        <TotalBox label="Other" value={order.totals.otherAmount} variant={variant} />
+        <TotalBox label="Shipping / Other" value={Number(order.totals.shippingAmount) + Number(order.totals.otherAmount)} variant={variant} />
         <TotalBox label="Grand Total" value={order.totals.grandTotal} variant={variant} strong />
       </div>
 
       <div>
-        <h3 className={`mb-3 text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
-          Line Items
-        </h3>
-
-        <div
-          className={[
-            'overflow-hidden rounded-2xl border',
-            isDark ? 'border-slate-800' : 'border-slate-200',
-          ].join(' ')}
-        >
-          <div className="overflow-x-auto">
-            {order.type === 'sales' ? (
-              <SalesItemsTable
-                items={order.items as SalesOrderDetailItem[]}
-                variant={variant}
-              />
-            ) : (
-              <PurchaseItemsTable
-                items={order.items as PurchaseOrderDetailItem[]}
-                variant={variant}
-              />
-            )}
-          </div>
-        </div>
+        <h3 className={`mb-3 text-base font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>Line Items</h3>
+        {order.type === 'sales' ? (
+          <SalesItemsTable items={order.items as SalesOrderDetailItem[]} variant={variant} />
+        ) : (
+          <PurchaseItemsTable items={order.items as PurchaseOrderDetailItem[]} variant={variant} />
+        )}
       </div>
 
       {order.notes ? (
         <DetailInfoCard title="Notes" variant={variant}>
-          <div className={`text-sm leading-6 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-            {order.notes}
-          </div>
+          {order.notes}
         </DetailInfoCard>
       ) : null}
     </div>
@@ -1186,24 +1068,13 @@ function TotalBox({
   const isDark = variant === 'dark'
 
   return (
-    <div
-      className={[
-        'rounded-2xl border p-4',
-        isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-slate-50',
-      ].join(' ')}
-    >
-      <div className={`text-xs font-semibold uppercase tracking-[0.12em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+    <div className={`rounded-2xl border p-4 ${isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-slate-50'}`}>
+      <p className={`text-xs font-semibold uppercase tracking-wide ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
         {label}
-      </div>
-      <div
-        className={[
-          'mt-2 font-data',
-          strong ? 'text-base font-bold' : 'text-sm font-semibold',
-          isDark ? 'text-white' : 'text-slate-950',
-        ].join(' ')}
-      >
+      </p>
+      <p className={`mt-1 font-data ${strong ? 'text-xl font-semibold' : 'text-base font-semibold'} ${isDark ? 'text-white' : 'text-slate-950'}`}>
         {formatCurrency(value)}
-      </div>
+      </p>
     </div>
   )
 }
@@ -1218,58 +1089,42 @@ function SalesItemsTable({
   const isDark = variant === 'dark'
 
   return (
-    <table className="min-w-[1320px] w-full border-collapse">
-      <thead className={isDark ? 'bg-slate-950' : 'bg-slate-50'}>
-        <tr>
-          {[
-            'Product',
-            'Qty',
-            'Unit Price',
-            'Discount',
-            'Final Unit',
-            'Cost',
-            'Subtotal',
-            'Total',
-            'Profit',
-            'Commission',
-          ].map((heading) => (
-            <th
-              key={heading}
-              className={[
-                'px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.1em]',
-                isDark ? 'text-slate-500' : 'text-slate-400',
-              ].join(' ')}
-            >
-              {heading}
-            </th>
-          ))}
-        </tr>
-      </thead>
-
-      <tbody className={['divide-y', isDark ? 'divide-slate-800 bg-slate-900' : 'divide-slate-100 bg-white'].join(' ')}>
-        {items.map((item) => (
-          <tr key={item.id}>
-            <td className="px-4 py-4">
-              <div className={`max-w-[280px] truncate text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
-                {item.productTitle}
-              </div>
-              <div className={`mt-1 text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                {[item.brandName, item.sku, item.modelNumber].filter(Boolean).join(' / ')}
-              </div>
-            </td>
-            <td className="px-4 py-4 font-data text-sm">{formatNumber(item.quantity)}</td>
-            <td className="px-4 py-4 font-data text-sm">{formatCurrency(item.unitPrice)}</td>
-            <td className="px-4 py-4 font-data text-sm">{formatCurrency(item.discountAmount)}</td>
-            <td className="px-4 py-4 font-data text-sm">{formatCurrency(item.finalUnitPrice)}</td>
-            <td className="px-4 py-4 font-data text-sm">{formatCurrency(item.costBasis)}</td>
-            <td className="px-4 py-4 font-data text-sm">{formatCurrency(item.lineSubtotal)}</td>
-            <td className="px-4 py-4 font-data text-sm font-semibold">{formatCurrency(item.lineTotal)}</td>
-            <td className="px-4 py-4 font-data text-sm">{formatCurrency(item.lineProfit)}</td>
-            <td className="px-4 py-4 font-data text-sm">{formatCurrency(item.commissionTotal)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
+          <thead className={isDark ? 'bg-slate-950' : 'bg-slate-50'}>
+            <tr>
+              {['Product', 'Qty', 'Unit Price', 'Discount', 'Final Unit', 'Cost', 'Subtotal', 'Total', 'Profit', 'Commission'].map((heading) => (
+                <th key={heading} className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {heading}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className={`divide-y ${isDark ? 'divide-slate-800 bg-slate-900' : 'divide-slate-100 bg-white'}`}>
+            {items.map((item) => (
+              <tr key={item.id}>
+                <td className="px-3 py-3">
+                  <p className={`font-medium ${isDark ? 'text-white' : 'text-slate-950'}`}>{item.productTitle}</p>
+                  <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    {[item.brandName, item.sku, item.modelNumber].filter(Boolean).join(' / ')}
+                  </p>
+                </td>
+                <td className="px-3 py-3 text-sm">{formatNumber(item.quantity)}</td>
+                <td className="px-3 py-3 text-sm">{formatCurrency(item.unitPrice)}</td>
+                <td className="px-3 py-3 text-sm">{formatCurrency(item.discountAmount)}</td>
+                <td className="px-3 py-3 text-sm">{formatCurrency(item.finalUnitPrice)}</td>
+                <td className="px-3 py-3 text-sm">{formatCurrency(item.costBasis)}</td>
+                <td className="px-3 py-3 text-sm">{formatCurrency(item.lineSubtotal)}</td>
+                <td className="px-3 py-3 text-sm">{formatCurrency(item.lineTotal)}</td>
+                <td className="px-3 py-3 text-sm">{formatCurrency(item.lineProfit)}</td>
+                <td className="px-3 py-3 text-sm">{formatCurrency(item.commissionTotal)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   )
 }
 
@@ -1283,45 +1138,35 @@ function PurchaseItemsTable({
   const isDark = variant === 'dark'
 
   return (
-    <table className="min-w-[820px] w-full border-collapse">
-      <thead className={isDark ? 'bg-slate-950' : 'bg-slate-50'}>
-        <tr>
-          {[
-            'Product',
-            'Qty',
-            'Unit Cost',
-            'Line Total',
-          ].map((heading) => (
-            <th
-              key={heading}
-              className={[
-                'px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.1em]',
-                isDark ? 'text-slate-500' : 'text-slate-400',
-              ].join(' ')}
-            >
-              {heading}
-            </th>
-          ))}
-        </tr>
-      </thead>
-
-      <tbody className={['divide-y', isDark ? 'divide-slate-800 bg-slate-900' : 'divide-slate-100 bg-white'].join(' ')}>
-        {items.map((item) => (
-          <tr key={item.id}>
-            <td className="px-4 py-4">
-              <div className={`max-w-[360px] truncate text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
-                {item.productTitle}
-              </div>
-              <div className={`mt-1 text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                {[item.brandName, item.sku, item.modelNumber].filter(Boolean).join(' / ')}
-              </div>
-            </td>
-            <td className="px-4 py-4 font-data text-sm">{formatNumber(item.quantity)}</td>
-            <td className="px-4 py-4 font-data text-sm">{formatCurrency(item.unitCost)}</td>
-            <td className="px-4 py-4 font-data text-sm font-semibold">{formatCurrency(item.lineTotal)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
+          <thead className={isDark ? 'bg-slate-950' : 'bg-slate-50'}>
+            <tr>
+              {['Product', 'Qty', 'Unit Cost', 'Line Total'].map((heading) => (
+                <th key={heading} className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {heading}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className={`divide-y ${isDark ? 'divide-slate-800 bg-slate-900' : 'divide-slate-100 bg-white'}`}>
+            {items.map((item) => (
+              <tr key={item.id}>
+                <td className="px-3 py-3">
+                  <p className={`font-medium ${isDark ? 'text-white' : 'text-slate-950'}`}>{item.productTitle}</p>
+                  <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    {[item.brandName, item.sku, item.modelNumber].filter(Boolean).join(' / ')}
+                  </p>
+                </td>
+                <td className="px-3 py-3 text-sm">{formatNumber(item.quantity)}</td>
+                <td className="px-3 py-3 text-sm">{formatCurrency(item.unitCost)}</td>
+                <td className="px-3 py-3 text-sm">{formatCurrency(item.lineTotal)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   )
 }

@@ -8,9 +8,12 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Throwable;
+use App\Support\AppliesMultiColumnSorting;
 
 class OrdersController extends Controller
 {
+    use AppliesMultiColumnSorting;
+    
     private const MAX_REPORT_DATE = '2026-03-31';
 
     private const SALES_STATUSES = [
@@ -52,8 +55,8 @@ class OrdersController extends Controller
         $pagination = $this->resolvePagination($request);
 
         $ordersPayload = $type === 'sales'
-            ? $this->getRecentSalesOrders($startDate, $endDate, $filters, $pagination)
-            : $this->getRecentPurchaseOrders($startDate, $endDate, $filters, $pagination);
+            ? $this->getRecentSalesOrders($request, $startDate, $endDate, $filters, $pagination)
+            : $this->getRecentPurchaseOrders($request, $startDate, $endDate, $filters, $pagination);
 
         return response()->json([
             'type' => $type,
@@ -220,6 +223,7 @@ class OrdersController extends Controller
     }
 
     protected function getRecentSalesOrders(
+        Request $request,
         CarbonImmutable $startDate,
         CarbonImmutable $endDate,
         array $filters,
@@ -268,22 +272,40 @@ class OrdersController extends Controller
 
         $total = (clone $query)->count();
 
-        $orders = $query
-            ->select([
-                'sales_orders.id',
-                'sales_orders.so_number as order_number',
-                'sales_orders.channel',
-                'sales_orders.status',
-                'sales_orders.payment_status',
-                'sales_orders.ordered_at',
-                'sales_orders.completed_at',
-                'sales_orders.grand_total as total_value',
-                DB::raw("COALESCE(NULLIF(sales_orders.contact_name, ''), NULLIF(customers.business_name, ''), NULLIF(TRIM(CONCAT(COALESCE(customers.first_name, ''), ' ', COALESCE(customers.last_name, ''))), ''), 'Unknown customer') as counterparty_name"),
-                DB::raw("NULLIF(TRIM(CONCAT(COALESCE(employees.first_name, ''), ' ', COALESCE(employees.last_name, ''))), '') as owner_name"),
-                DB::raw('COALESCE(item_summary.item_count, 0) as item_count'),
-                DB::raw('COALESCE(item_summary.total_quantity, 0) as total_quantity'),
-            ])
-            ->orderByDesc('sales_orders.ordered_at')
+        $ordersQuery = $query->select([
+            'sales_orders.id',
+            'sales_orders.so_number as order_number',
+            'sales_orders.channel',
+            'sales_orders.status',
+            'sales_orders.payment_status',
+            'sales_orders.ordered_at',
+            'sales_orders.completed_at',
+            'sales_orders.grand_total as total_value',
+            DB::raw("COALESCE(NULLIF(sales_orders.contact_name, ''), NULLIF(customers.business_name, ''), NULLIF(TRIM(CONCAT(COALESCE(customers.first_name, ''), ' ', COALESCE(customers.last_name, ''))), ''), 'Unknown customer') as counterparty_name"),
+            DB::raw("NULLIF(TRIM(CONCAT(COALESCE(employees.first_name, ''), ' ', COALESCE(employees.last_name, ''))), '') as owner_name"),
+            DB::raw('COALESCE(item_summary.item_count, 0) as item_count'),
+            DB::raw('COALESCE(item_summary.total_quantity, 0) as total_quantity'),
+        ]);
+
+        $salesAllowedSorts = [
+            'orderNumber' => 'sales_orders.so_number',
+            'counterpartyName' => function ($query, string $direction) {
+                $query->orderByRaw(
+                    "COALESCE(NULLIF(sales_orders.contact_name, ''), NULLIF(customers.business_name, ''), NULLIF(TRIM(CONCAT(COALESCE(customers.first_name, ''), ' ', COALESCE(customers.last_name, ''))), ''), 'Unknown customer') {$direction}"
+                );
+            },
+            'date' => fn ($query, string $direction) => $this->orderByNullableDate($query, 'sales_orders.ordered_at', $direction),
+            'status' => 'sales_orders.status',
+            'source' => 'sales_orders.channel',
+            'itemCount' => fn ($query, string $direction) => $query->orderByRaw("COALESCE(item_summary.item_count, 0) {$direction}"),
+            'totalValue' => 'sales_orders.grand_total',
+        ];
+
+        $this->applySorts($ordersQuery, $request, $salesAllowedSorts, [
+            ['field' => 'date', 'direction' => 'desc'],
+        ]);
+
+        $orders = $ordersQuery
             ->orderByDesc('sales_orders.id')
             ->offset($pagination['offset'])
             ->limit($pagination['perPage'])
@@ -315,6 +337,7 @@ class OrdersController extends Controller
     }
 
     protected function getRecentPurchaseOrders(
+        Request $request,
         CarbonImmutable $startDate,
         CarbonImmutable $endDate,
         array $filters,
@@ -359,21 +382,35 @@ class OrdersController extends Controller
 
         $total = (clone $query)->count();
 
-        $orders = $query
-            ->select([
-                'purchase_orders.id',
-                'purchase_orders.po_number as order_number',
-                'purchase_orders.status',
-                'purchase_orders.ordered_at',
-                'purchase_orders.expected_at',
-                'purchase_orders.received_at',
-                'purchase_orders.total_cost as total_value',
-                'suppliers.name as supplier_name',
-                'suppliers.contact_person',
-                DB::raw('COALESCE(item_summary.item_count, 0) as item_count'),
-                DB::raw('COALESCE(item_summary.total_quantity, 0) as total_quantity'),
-            ])
-            ->orderByDesc('purchase_orders.ordered_at')
+        $ordersQuery = $query->select([
+            'purchase_orders.id',
+            'purchase_orders.po_number as order_number',
+            'purchase_orders.status',
+            'purchase_orders.ordered_at',
+            'purchase_orders.expected_at',
+            'purchase_orders.received_at',
+            'purchase_orders.total_cost as total_value',
+            'suppliers.name as supplier_name',
+            'suppliers.contact_person',
+            DB::raw('COALESCE(item_summary.item_count, 0) as item_count'),
+            DB::raw('COALESCE(item_summary.total_quantity, 0) as total_quantity'),
+        ]);
+
+        $purchaseAllowedSorts = [
+            'orderNumber' => 'purchase_orders.po_number',
+            'counterpartyName' => 'suppliers.name',
+            'date' => fn ($query, string $direction) => $this->orderByNullableDate($query, 'purchase_orders.ordered_at', $direction),
+            'status' => 'purchase_orders.status',
+            'source' => fn ($query, string $direction) => $this->orderByNullableDate($query, 'purchase_orders.expected_at', $direction),
+            'itemCount' => fn ($query, string $direction) => $query->orderByRaw("COALESCE(item_summary.item_count, 0) {$direction}"),
+            'totalValue' => 'purchase_orders.total_cost',
+        ];
+
+        $this->applySorts($ordersQuery, $request, $purchaseAllowedSorts, [
+            ['field' => 'date', 'direction' => 'desc'],
+        ]);
+
+        $orders = $ordersQuery
             ->orderByDesc('purchase_orders.id')
             ->offset($pagination['offset'])
             ->limit($pagination['perPage'])

@@ -92,10 +92,42 @@ function getStateCodeFromGeoId(id: string | number | undefined) {
   return FIPS_TO_STATE_CODE[fips] ?? null
 }
 
-function getFillOpacity(value: number, maxValue: number) {
+function getFillOpacity(value: number, maxValue: number, isDark: boolean) {
   if (value <= 0 || maxValue <= 0) return 0
 
-  return Math.max(0.18, Math.min(0.95, value / maxValue))
+  const normalized = Math.sqrt(value / maxValue)
+
+  if (isDark) {
+    return Math.max(0.28, Math.min(0.82, normalized * 0.78))
+  }
+
+  return Math.max(0.16, Math.min(0.9, normalized * 0.9))
+}
+
+function getStateFill({
+  customerCount,
+  maxCustomers,
+  isDark,
+  isHovered,
+}: {
+  customerCount: number
+  maxCustomers: number
+  isDark: boolean
+  isHovered: boolean
+}) {
+  if (isHovered) {
+    return isDark ? '#a78bfa' : '#2563eb'
+  }
+
+  if (customerCount <= 0) {
+    return isDark ? '#111827' : '#f1f5f9'
+  }
+
+  const opacity = getFillOpacity(customerCount, maxCustomers, isDark)
+
+  return isDark
+    ? `rgba(129, 140, 248, ${opacity})`
+    : `rgba(37, 99, 235, ${opacity})`
 }
 
 export default function CustomerStateMap({
@@ -122,7 +154,7 @@ export default function CustomerStateMap({
 
     const collection = feature(
       topology as never,
-      topology.objects.states as never
+      topology.objects.states as never,
     ) as unknown as {
       features: GeoFeature[]
     }
@@ -140,17 +172,17 @@ export default function CustomerStateMap({
 
   const totalCustomers = data.reduce(
     (sum, item) => sum + item.customerCount,
-    0
+    0,
   )
 
   const totalOrders = data.reduce(
     (sum, item) => sum + item.orderCount,
-    0
+    0,
   )
 
   const totalRevenue = data.reduce(
     (sum, item) => sum + Number(item.revenue),
-    0
+    0,
   )
 
   const topMarkets = [...data]
@@ -159,27 +191,37 @@ export default function CustomerStateMap({
 
   const topMarketCustomers = topMarkets.reduce(
     (sum, item) => sum + item.customerCount,
-    0
+    0,
   )
 
   const topMarketShare =
     totalCustomers > 0 ? (topMarketCustomers / totalCustomers) * 100 : 0
 
-  const emptyFill = isDark ? '#1e293b' : '#f1f5f9'
-  const strokeColor = isDark ? '#334155' : '#cbd5e1'
-  const activeStrokeColor = isDark ? '#93c5fd' : '#1d4ed8'
+  const strokeColor = isDark ? 'rgba(148, 163, 184, 0.32)' : '#cbd5e1'
+  const activeStrokeColor = isDark ? 'rgba(191, 219, 254, 0.48)' : '#93c5fd'
+
+  const wrapperClass = [
+    'grid items-stretch gap-5 xl:grid-cols-[minmax(0,1fr)_340px]',
+  ].join(' ')
+
+  const mapPanelClass = [
+    'relative h-full min-h-[520px] overflow-hidden rounded-2xl border p-4',
+    isDark
+      ? 'border-slate-800 bg-slate-950/50 shadow-inner shadow-black/20'
+      : 'border-slate-200 bg-slate-50',
+  ].join(' ')
+
+  const mapInnerClass = [
+    'flex h-full min-h-[488px] items-center justify-center rounded-xl',
+    isDark
+      ? 'bg-[radial-gradient(circle_at_center,rgba(79,70,229,0.16),rgba(15,23,42,0.22)_48%,rgba(2,6,23,0.18)_100%)]'
+      : 'bg-[radial-gradient(circle_at_center,rgba(219,234,254,0.65),rgba(248,250,252,0.9)_58%,rgba(248,250,252,1)_100%)]',
+  ].join(' ')
 
   return (
-    <div className="grid items-stretch gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-      <div
-        className={[
-          'relative h-full min-h-[520px] overflow-hidden rounded-2xl border p-4',
-          isDark
-            ? 'border-slate-800 bg-slate-950/40'
-            : 'border-slate-200 bg-slate-50',
-        ].join(' ')}
-      >
-        <div className="flex h-full min-h-[488px] items-center justify-center">
+    <div className={wrapperClass}>
+      <div className={mapPanelClass}>
+        <div className={mapInnerClass}>
           <svg
             viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
             role="img"
@@ -189,16 +231,16 @@ export default function CustomerStateMap({
             {geographies.map((geo) => {
               const stateCode = getStateCodeFromGeoId(geo.id)
               const stateData = stateCode ? stateDataByCode.get(stateCode) : null
-
               const customerCount = stateData?.customerCount ?? 0
-              const opacity = getFillOpacity(customerCount, maxCustomers)
+              const isHovered =
+                Boolean(stateCode) && hoveredState?.stateCode === stateCode
 
-              const fill =
-                customerCount > 0
-                  ? isDark
-                    ? `rgba(96, 165, 250, ${opacity})`
-                    : `rgba(37, 99, 235, ${opacity})`
-                  : emptyFill
+              const fill = getStateFill({
+                customerCount,
+                maxCustomers,
+                isDark,
+                isHovered,
+              })
 
               const path = pathGenerator(geo as never) ?? ''
 
@@ -208,10 +250,15 @@ export default function CustomerStateMap({
                   d={path}
                   fill={fill}
                   stroke={customerCount > 0 ? activeStrokeColor : strokeColor}
-                  strokeWidth={customerCount > 0 ? 0.75 : 0.5}
-                  className="transition"
+                  strokeWidth={isHovered ? 1.4 : customerCount > 0 ? 0.8 : 0.55}
+                  className="transition-colors duration-150"
                   style={{
                     cursor: 'pointer',
+                    filter: isHovered
+                      ? isDark
+                        ? 'drop-shadow(0 0 8px rgba(167, 139, 250, 0.35))'
+                        : 'drop-shadow(0 0 5px rgba(37, 99, 235, 0.25))'
+                      : undefined,
                   }}
                   onMouseMove={(event) => {
                     const fallbackName =
@@ -229,11 +276,7 @@ export default function CustomerStateMap({
                       y: event.clientY,
                     })
                   }}
-                  onMouseEnter={(event) => {
-                    event.currentTarget.style.fill = isDark ? '#93c5fd' : '#2563eb'
-                  }}
-                  onMouseLeave={(event) => {
-                    event.currentTarget.style.fill = fill
+                  onMouseLeave={() => {
                     setHoveredState(null)
                   }}
                 />
@@ -242,13 +285,39 @@ export default function CustomerStateMap({
           </svg>
         </div>
 
+        <div
+          className={[
+            'absolute bottom-5 left-5 rounded-2xl border px-3 py-2 text-xs shadow-sm',
+            isDark
+              ? 'border-slate-800 bg-slate-950/80 text-slate-400 shadow-black/20'
+              : 'border-slate-200 bg-white/90 text-slate-500 shadow-slate-200/70',
+          ].join(' ')}
+        >
+          <div className="mb-2 font-semibold uppercase tracking-[0.12em]">
+            Customer density
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span>Low</span>
+            <div
+              className={[
+                'h-2 w-28 rounded-full',
+                isDark
+                  ? 'bg-gradient-to-r from-slate-800 via-indigo-500/50 to-violet-400'
+                  : 'bg-gradient-to-r from-slate-100 via-blue-300 to-blue-700',
+              ].join(' ')}
+            />
+            <span>High</span>
+          </div>
+        </div>
+
         {hoveredState ? (
           <div
             className={[
               'pointer-events-none fixed z-[70] min-w-[220px] rounded-2xl border p-3 shadow-xl',
               isDark
-                ? 'border-slate-700 bg-slate-950 text-slate-100'
-                : 'border-slate-200 bg-white text-slate-950',
+                ? 'border-slate-700 bg-slate-950 text-slate-100 shadow-black/40'
+                : 'border-slate-200 bg-white text-slate-950 shadow-slate-300/40',
             ].join(' ')}
             style={{
               left: hoveredState.x + 14,
@@ -278,7 +347,7 @@ export default function CustomerStateMap({
         className={[
           'flex h-full flex-col rounded-2xl border p-4',
           isDark
-            ? 'border-slate-800 bg-slate-950/40'
+            ? 'border-slate-800 bg-slate-950/50 shadow-inner shadow-black/20'
             : 'border-slate-200 bg-white',
         ].join(' ')}
       >
@@ -367,7 +436,7 @@ export default function CustomerStateMap({
           className={[
             'mt-5 rounded-2xl border px-3 py-3',
             isDark
-              ? 'border-slate-800 bg-slate-900'
+              ? 'border-slate-800 bg-slate-900/80'
               : 'border-slate-200 bg-slate-50',
           ].join(' ')}
         >
@@ -467,7 +536,10 @@ function MarketRow({
         ].join(' ')}
       >
         <div
-          className="h-full rounded-full bg-blue-600"
+          className={[
+            'h-full rounded-full',
+            isDark ? 'bg-violet-500' : 'bg-blue-600',
+          ].join(' ')}
           style={{
             width: `${width}%`,
           }}

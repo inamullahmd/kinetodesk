@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { X } from 'lucide-react'
 import { useOutletContext } from 'react-router-dom'
 import SectionCard from '../../components/dashboard/SectionCard'
 import StatCard from '../../components/dashboard/StatCard'
 import { getInventoryAlerts, getInventoryProductDetail } from '../../api/inventory'
+import { useMultiSort } from '../../hooks/useMultiSort'
 import type { DashboardOutletContext } from '../../layouts/DashboardLayout'
 import type {
   InventoryAlertsResponse,
@@ -15,20 +16,16 @@ import {
   CheckboxGroup,
   DEFAULT_INVENTORY_DATE_RANGE,
   FilterLabel,
-  INVENTORY_MAX_DATE,
   PaginationControls,
   ProductTable,
   formatDate,
-  formatDateRangeLabel,
   formatEnumLabel,
-  normalizeDateRange,
 } from './inventoryShared'
 
 export default function InventoryAlertsPage() {
   const { setHeaderRange, setHeaderDateRangeControl, theme } =
     useOutletContext<DashboardOutletContext>()
 
-  const [dateRange, setDateRange] = useState(DEFAULT_INVENTORY_DATE_RANGE)
   const [search, setSearch] = useState('')
   const [alertTypes, setAlertTypes] = useState<string[]>([])
   const [category, setCategory] = useState('all')
@@ -43,15 +40,13 @@ export default function InventoryAlertsPage() {
     useState<InventoryProductDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
 
+  const { sortParam, cycleSort, getSort, getSortIndex } = useMultiSort(
+    [{ field: 'currentStock', direction: 'asc' }, { field: 'product', direction: 'asc' }],
+    { onChange: () => setPage(1) },
+  )
+
   const isDark = theme === 'dark'
 
-  const updateDateRange = useCallback(
-    (nextRange: { startDate: string; endDate: string }) => {
-      setDateRange(normalizeDateRange(nextRange))
-      setPage(1)
-    },
-    []
-  )
 
   useEffect(() => {
   setHeaderRange(null)
@@ -70,14 +65,15 @@ export default function InventoryAlertsPage() {
       setLoading(true)
 
       const response = await getInventoryAlerts({
-        startDate: dateRange.startDate,
-        endDate: dateRange.endDate,
+        startDate: DEFAULT_INVENTORY_DATE_RANGE.startDate,
+        endDate: DEFAULT_INVENTORY_DATE_RANGE.endDate,
         search,
         alertTypes,
         category,
         brand,
         page,
         perPage,
+        sort: sortParam,
       })
 
       if (!active) return
@@ -92,14 +88,13 @@ export default function InventoryAlertsPage() {
       active = false
     }
   }, [
-    dateRange.startDate,
-    dateRange.endDate,
     search,
     alertTypes,
     category,
     brand,
     page,
     perPage,
+    sortParam,
   ])
 
   async function openProduct(row: InventoryProductRow) {
@@ -281,6 +276,9 @@ export default function InventoryAlertsPage() {
                 rows={data.rows}
                 variant={theme}
                 onView={openProduct}
+                getSort={getSort}
+                getSortIndex={getSortIndex}
+                onSort={cycleSort}
               />
 
               <PaginationControls

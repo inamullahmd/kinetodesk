@@ -1,18 +1,28 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Building2, Eye, UserRound, X } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { Building2, Eye, UserRound } from 'lucide-react'
 import { useOutletContext } from 'react-router-dom'
 import ChartToggle from '../../components/dashboard/ChartToggle'
 import SectionCard from '../../components/dashboard/SectionCard'
 import StatCard from '../../components/dashboard/StatCard'
+import RightDrawer from '../../components/common/RightDrawer'
+import SortableHeader from '../../components/common/SortableHeader'
+import DedicatedEntitySearch from '../../components/search/DedicatedEntitySearch'
 import { getCustomerDetail, getCustomers } from '../../api/customers'
+import { getOrderDetail } from '../../api/orders'
 import type { DashboardOutletContext } from '../../layouts/DashboardLayout'
 import type {
   CustomerDetailResponse,
   CustomerPagination,
+  CustomerRecentOrder,
   CustomerRow,
   CustomerType,
   CustomersResponse,
 } from '../../types/customers'
+import type { LookupResult } from '../../types/lookup'
+import type { OrderDetail, SalesOrderDetailItem } from '../../types/orders'
+import type { SortItem } from '../../types/sort'
+import { useMultiSort } from '../../hooks/useMultiSort'
 import {
   formatCompactNumber,
   formatCurrency,
@@ -116,12 +126,12 @@ function PaginationControls({
   ].join(' ')
 
   return (
-    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-        Showing <span className="font-data font-semibold">{pagination.from}</span> to{' '}
-        <span className="font-data font-semibold">{pagination.to}</span> of{' '}
-        <span className="font-data font-semibold">{pagination.total}</span> customers
-      </div>
+    <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+      <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+        Showing <span className="font-semibold">{pagination.from}</span> to{' '}
+        <span className="font-semibold">{pagination.to}</span> of{' '}
+        <span className="font-semibold">{pagination.total}</span> customers
+      </p>
 
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -138,10 +148,7 @@ function PaginationControls({
             return (
               <span
                 key={item}
-                className={[
-                  'inline-flex h-10 min-w-10 items-center justify-center text-sm font-semibold',
-                  isDark ? 'text-slate-600' : 'text-slate-400',
-                ].join(' ')}
+                className={`px-2 text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}
               >
                 ...
               </span>
@@ -179,19 +186,14 @@ function FilterLabel({
   variant,
 }: {
   label: string
-  children: React.ReactNode
+  children: ReactNode
   variant: 'light' | 'dark'
 }) {
   const isDark = variant === 'dark'
 
   return (
-    <label className="flex min-w-0 flex-col gap-1.5">
-      <span
-        className={[
-          'text-xs font-semibold uppercase tracking-[0.1em]',
-          isDark ? 'text-slate-500' : 'text-slate-400',
-        ].join(' ')}
-      >
+    <label className="flex flex-col gap-1">
+      <span className={`text-xs font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
         {label}
       </span>
       {children}
@@ -212,7 +214,7 @@ function StatusBadge({
   return (
     <span
       className={[
-        'inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1',
+        'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset',
         active
           ? isDark
             ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/20'
@@ -240,7 +242,6 @@ export default function CustomersPage() {
   const [status, setStatus] = useState('all')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
-
   const [data, setData] = useState<CustomersResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -249,6 +250,21 @@ export default function CustomersPage() {
     useState<CustomerDetailResponse | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
+
+  const [selectedOrder, setSelectedOrder] = useState<OrderDetail | null>(null)
+  const [orderDetailLoading, setOrderDetailLoading] = useState(false)
+  const [orderDetailError, setOrderDetailError] = useState<string | null>(null)
+
+  const {
+    sortParam,
+    cycleSort,
+    getSort,
+    getSortIndex,
+    setSorts,
+  } = useMultiSort(
+    [{ field: 'displayName', direction: 'asc' }],
+    { onChange: () => setPage(1) },
+  )
 
   const isDark = theme === 'dark'
 
@@ -268,7 +284,9 @@ export default function CustomersPage() {
     setStatus('all')
     setPage(1)
     setSelectedCustomer(null)
-  }, [customerType])
+    setSelectedOrder(null)
+    setSorts([{ field: 'displayName', direction: 'asc' }])
+  }, [customerType, setSorts])
 
   useEffect(() => {
     let active = true
@@ -285,10 +303,10 @@ export default function CustomersPage() {
           status,
           page,
           perPage,
+          sort: sortParam,
         })
 
         if (!active) return
-
         setData(response)
       } catch {
         if (!active) return
@@ -312,16 +330,17 @@ export default function CustomersPage() {
     status,
     page,
     perPage,
+    sortParam,
   ])
 
-  async function openCustomer(customer: CustomerRow) {
+  async function openCustomerById(id: number) {
     try {
       setDetailLoading(true)
       setDetailError(null)
       setSelectedCustomer(null)
+      setSelectedOrder(null)
 
-      const response = await getCustomerDetail(customer.id)
-
+      const response = await getCustomerDetail(id)
       setSelectedCustomer(response)
     } catch {
       setDetailError('Failed to load customer details.')
@@ -330,13 +349,48 @@ export default function CustomersPage() {
     }
   }
 
+  function openCustomer(customer: CustomerRow) {
+    void openCustomerById(customer.id)
+  }
+
+  function openLookupCustomer(result: LookupResult) {
+    if (result.type === 'customer') {
+      void openCustomerById(result.id)
+    }
+  }
+
+  async function openSalesOrderById(id: number) {
+    try {
+      setOrderDetailLoading(true)
+      setOrderDetailError(null)
+      setSelectedOrder(null)
+
+      setSelectedCustomer(null)
+      setDetailError(null)
+
+      const response = await getOrderDetail('sales', id)
+      setSelectedOrder(response)
+    } catch {
+      setOrderDetailError('Failed to load sales order details.')
+    } finally {
+      setOrderDetailLoading(false)
+    }
+  }
+
+  function resetFilters() {
+    setSearch('')
+    setSelectedState('all')
+    setStatus('all')
+    setPage(1)
+  }
+
   const filterOptions = useMemo(
     () =>
       data?.filterOptions ?? {
         states: [],
         statuses: ['active', 'inactive'],
       },
-    [data]
+    [data],
   )
 
   const inputClass = [
@@ -346,19 +400,20 @@ export default function CustomersPage() {
       : 'border-slate-200 bg-white text-slate-700 placeholder:text-slate-400 focus:border-blue-500',
   ].join(' ')
 
-  const selectedTypeLabel = customerType === 'individual' ? 'Individuals' : 'Businesses'
+  const selectedTypeLabel = customerType === 'individual' ? 'Individual Customers' : 'Business Customers'
   const selectedTypeSingular = customerType === 'individual' ? 'Individual' : 'Business'
+  const revenueTitle = customerType === 'individual' ? 'Individual Revenue' : 'Business Revenue'
   const clvTitle = customerType === 'individual' ? 'Average Customer CLV' : 'Average Account CLV'
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <div className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
         <div>
-          <h1 className={`text-xl font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
+          <h1 className={`text-3xl font-semibold tracking-tight ${isDark ? 'text-white' : 'text-slate-950'}`}>
             Customers
           </h1>
           <p className={`mt-1 text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-            Customer geography, CLV, and lifetime sales behavior.
+            Customer geography, lifetime sales behavior, CLV, and direct customer lookup.
           </p>
         </div>
 
@@ -373,83 +428,68 @@ export default function CustomersPage() {
         />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <DedicatedEntitySearch
+  entity="customers"
+  placeholder={
+    customerType === 'individual'
+      ? 'Find individual customer by name, email, phone, or city...'
+      : 'Find business by name, contact, email, phone, or city...'
+  }
+  onOpenResult={openLookupCustomer}
+  variant={theme}
+/>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
         <StatCard
-          title={`Total ${selectedTypeLabel}`}
-          value={data ? formatNumber(data.summary.totalCustomers) : '-'}
-          helperText="Customer records"
-          icon={customerType === 'individual' ? <UserRound size={18} /> : <Building2 size={18} />}
+          title={selectedTypeLabel}
+          value={formatCompactNumber(data?.summary.totalCustomers ?? 0)}
+          helperText={`${selectedTypeSingular} customer records`}
           compact
           variant={theme}
         />
 
         <StatCard
-          title="Repeat Buyers"
-          value={data ? formatNumber(data.summary.repeatCustomers) : '-'}
-          helperText="2 or more delivered orders"
+          title="Repeat Customers"
+          value={formatCompactNumber(data?.summary.repeatCustomers ?? 0)}
+          helperText="Customers with more than one SO"
+          compact
+          variant={theme}
+        />
+
+        <StatCard
+          title={revenueTitle}
+          value={formatCurrency(data?.summary.customerRevenue ?? 0)}
+          helperText={`Revenue from ${selectedTypeLabel.toLowerCase()}`}
+          compact
+          variant={theme}
+        />
+
+        <StatCard
+          title="Average Order Value"
+          value={formatCurrency(data?.summary.averageOrderValue ?? 0)}
+          helperText="Revenue per sales order"
           compact
           variant={theme}
         />
 
         <StatCard
           title={clvTitle}
-          value={data ? formatCompactNumber(data.summary.averageClv) : '-'}
-          secondaryValue={data ? formatCurrency(data.summary.averageClv) : undefined}
-          helperText={
-            data
-              ? `${data.summary.clvAssumptionYears}-year estimated value`
-              : 'Estimated value'
-          }
+          value={formatCurrency(data?.summary.averageClv ?? 0)}
+          helperText={`Estimated using ${data?.summary.clvAssumptionYears ?? 3} year lifespan`}
           compact
-          monoSecondary
-          variant={theme}
-        />
-
-        <StatCard
-  title="Lifetime Revenue"
-  value={data ? formatCompactNumber(data.summary.customerRevenue) : '-'}
-  secondaryValue={data ? formatCurrency(data.summary.customerRevenue) : undefined}
-  helperText={
-    customerType === 'individual'
-      ? 'Individual customers only'
-      : 'Business customers only'
-  }
-  compact
-  monoSecondary
-  variant={theme}
-/>
-
-        <StatCard
-          title="Average Order Value"
-          value={data ? formatCurrency(data.summary.averageOrderValue) : '-'}
-          helperText="Lifetime delivered orders"
-          compact
-          monoSecondary
           variant={theme}
         />
       </div>
 
-      <SectionCard
-        title={`${selectedTypeSingular} Customer Distribution`}
-        description="Customer concentration across the United States."
-        variant={theme}
-      >
-        <CustomerStateMap
-          data={data?.stateDistribution ?? []}
+      <div className="space-y-6">
+        <SectionCard
+          title={`${selectedTypeLabel} List`}
+          description="Table search filters the current customer list. Direct lookup above searches all customers globally."
           variant={theme}
-        />
-      </SectionCard>
-
-      <SectionCard
-        title={customerType === 'individual' ? 'Individual Customers' : 'Business Customers'}
-        description="Search, filter, and review customer performance."
-        variant={theme}
-      >
-        <div className="space-y-5">
-          <div className="grid gap-3 xl:grid-cols-[minmax(260px,1fr)_180px_150px_140px_auto]">
+        >
+          <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-5">
             <FilterLabel label="Search" variant={theme}>
               <input
-                type="search"
                 value={search}
                 onChange={(event) => {
                   setSearch(event.target.value)
@@ -519,12 +559,7 @@ export default function CustomersPage() {
             <div className="flex items-end">
               <button
                 type="button"
-                onClick={() => {
-                  setSearch('')
-                  setSelectedState('all')
-                  setStatus('all')
-                  setPage(1)
-                }}
+                onClick={resetFilters}
                 className={[
                   'h-10 rounded-xl border px-4 text-sm font-semibold transition',
                   isDark
@@ -537,117 +572,197 @@ export default function CustomersPage() {
             </div>
           </div>
 
-          <div
-            className={[
-              'overflow-hidden rounded-2xl border',
-              isDark ? 'border-slate-800' : 'border-slate-200',
-            ].join(' ')}
-          >
-            <div className="overflow-x-auto">
-              <table className="min-w-[1120px] w-full border-collapse">
-                <thead className={isDark ? 'bg-slate-950' : 'bg-slate-50'}>
-                  <tr>
-                    {[
-                      customerType === 'individual' ? 'Customer' : 'Business',
-                      customerType === 'individual' ? 'Location' : 'Contact',
-                      customerType === 'individual' ? 'Orders' : 'Location',
-                      'Revenue',
-                      'Average Order',
-                      'Last Order',
-                      'Status',
-                      '',
-                    ].map((heading) => (
-                      <th
-                        key={heading || 'actions'}
-                        className={[
-                          'px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.1em]',
-                          ['Revenue', 'Average Order'].includes(heading) ? 'text-right' : '',
-                          isDark ? 'text-slate-500' : 'text-slate-400',
-                        ].join(' ')}
-                      >
-                        {heading}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-
-                <tbody
-                  className={[
-                    'divide-y',
-                    isDark ? 'divide-slate-800 bg-slate-900' : 'divide-slate-100 bg-white',
-                  ].join(' ')}
-                >
-                  {loading ? (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className={`px-4 py-12 text-center text-sm ${
-                          isDark ? 'text-slate-400' : 'text-slate-500'
-                        }`}
-                      >
-                        Loading customers...
-                      </td>
-                    </tr>
-                  ) : error ? (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className={`px-4 py-12 text-center text-sm ${
-                          isDark ? 'text-rose-300' : 'text-rose-600'
-                        }`}
-                      >
-                        {error}
-                      </td>
-                    </tr>
-                  ) : data?.customers.length ? (
-                    data.customers.map((customer) => (
-                      <CustomerTableRow
-                        key={customer.id}
-                        customer={customer}
-                        customerType={customerType}
-                        variant={theme}
-                        onView={() => openCustomer(customer)}
-                      />
-                    ))
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className={`px-4 py-12 text-center text-sm ${
-                          isDark ? 'text-slate-400' : 'text-slate-500'
-                        }`}
-                      >
-                        No customers found for the selected filters.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <CustomerTable
+            customers={data?.customers ?? []}
+            loading={loading}
+            error={error}
+            customerType={customerType}
+            variant={theme}
+            onView={openCustomer}
+            getSort={getSort}
+            getSortIndex={getSortIndex}
+            onSort={cycleSort}
+          />
 
           {data?.pagination ? (
-            <PaginationControls
-              pagination={data.pagination}
-              onPageChange={setPage}
+            <div className="mt-4">
+              <PaginationControls
+                pagination={data.pagination}
+                onPageChange={setPage}
+                variant={theme}
+              />
+            </div>
+          ) : null}
+        </SectionCard>
+
+        <SectionCard
+          title="Customer Geography"
+          description="State-level customer concentration, order volume, and revenue distribution."
+          variant={theme}
+        >
+          <div className="min-h-[360px]">
+            <CustomerStateMap
+              data={data?.stateDistribution ?? []}
               variant={theme}
             />
-          ) : null}
-        </div>
-      </SectionCard>
+          </div>
+        </SectionCard>
+      </div>
 
-      {detailLoading || detailError || selectedCustomer ? (
-        <CustomerDetailDrawer
-          detail={selectedCustomer}
-          loading={detailLoading}
-          error={detailError}
-          onClose={() => {
-            setSelectedCustomer(null)
-            setDetailError(null)
-          }}
-          variant={theme}
-        />
-      ) : null}
+      <CustomerDetailDrawer
+        detail={selectedCustomer}
+        loading={detailLoading}
+        error={detailError}
+        open={detailLoading || Boolean(detailError) || Boolean(selectedCustomer)}
+        onClose={() => {
+          setSelectedCustomer(null)
+          setDetailError(null)
+        }}
+        onViewOrder={(order) => {
+          void openSalesOrderById(order.id)
+        }}
+        variant={theme}
+      />
+
+      <SalesOrderDrawer
+        order={selectedOrder}
+        loading={orderDetailLoading}
+        error={orderDetailError}
+        open={orderDetailLoading || Boolean(orderDetailError) || Boolean(selectedOrder)}
+        onClose={() => {
+          setSelectedOrder(null)
+          setOrderDetailError(null)
+        }}
+        variant={theme}
+      />
+    </div>
+  )
+}
+
+function CustomerTable({
+  customers,
+  loading,
+  error,
+  customerType,
+  variant,
+  onView,
+  getSort,
+  getSortIndex,
+  onSort,
+}: {
+  customers: CustomerRow[]
+  loading: boolean
+  error: string | null
+  customerType: CustomerType
+  variant: 'light' | 'dark'
+  onView: (customer: CustomerRow) => void
+  getSort: (field: string) => SortItem | undefined
+  getSortIndex: (field: string) => number | undefined
+  onSort: (field: string) => void
+}) {
+  const isDark = variant === 'dark'
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1180px] divide-y divide-slate-200 dark:divide-slate-800">
+          <thead className={isDark ? 'bg-slate-950' : 'bg-slate-50'}>
+            <tr>
+              <SortableHeader
+                label={customerType === 'individual' ? 'Customer' : 'Business'}
+                field="displayName"
+                sort={getSort('displayName')}
+                sortIndex={getSortIndex('displayName')}
+                onSort={onSort}
+              />
+              <SortableHeader
+                label={customerType === 'individual' ? 'Location' : 'Contact'}
+                field={customerType === 'individual' ? 'location' : 'contactName'}
+                sort={getSort(customerType === 'individual' ? 'location' : 'contactName')}
+                sortIndex={getSortIndex(customerType === 'individual' ? 'location' : 'contactName')}
+                onSort={onSort}
+              />
+              <SortableHeader
+                label={customerType === 'individual' ? 'Orders' : 'Location'}
+                field={customerType === 'individual' ? 'orderCount' : 'location'}
+                sort={getSort(customerType === 'individual' ? 'orderCount' : 'location')}
+                sortIndex={getSortIndex(customerType === 'individual' ? 'orderCount' : 'location')}
+                onSort={onSort}
+                align={customerType === 'individual' ? 'right' : 'left'}
+              />
+              <SortableHeader
+                label="Revenue"
+                field="totalRevenue"
+                sort={getSort('totalRevenue')}
+                sortIndex={getSortIndex('totalRevenue')}
+                onSort={onSort}
+                align="right"
+              />
+              <SortableHeader
+                label="Average Order"
+                field="averageOrderValue"
+                sort={getSort('averageOrderValue')}
+                sortIndex={getSortIndex('averageOrderValue')}
+                onSort={onSort}
+                align="right"
+              />
+              <SortableHeader
+                label="Last Order"
+                field="lastOrderAt"
+                sort={getSort('lastOrderAt')}
+                sortIndex={getSortIndex('lastOrderAt')}
+                onSort={onSort}
+              />
+              <SortableHeader
+                label="Status"
+                field="status"
+                sort={getSort('status')}
+                sortIndex={getSortIndex('status')}
+                onSort={onSort}
+              />
+              <th className="px-4 py-3" />
+            </tr>
+          </thead>
+
+          <tbody className={`divide-y ${isDark ? 'divide-slate-800 bg-slate-900' : 'divide-slate-100 bg-white'}`}>
+            {loading ? (
+              <tr>
+                <td
+                  colSpan={8}
+                  className={`px-4 py-10 text-center text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
+                >
+                  Loading customers...
+                </td>
+              </tr>
+            ) : error ? (
+              <tr>
+                <td colSpan={8} className="px-4 py-10 text-center text-sm text-rose-600">
+                  {error}
+                </td>
+              </tr>
+            ) : customers.length ? (
+              customers.map((customer) => (
+                <CustomerTableRow
+                  key={customer.id}
+                  customer={customer}
+                  customerType={customerType}
+                  variant={variant}
+                  onView={() => onView(customer)}
+                />
+              ))
+            ) : (
+              <tr>
+                <td
+                  colSpan={8}
+                  className={`px-4 py-10 text-center text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
+                >
+                  No customers found for the selected filters.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
@@ -664,98 +779,75 @@ function CustomerTableRow({
   onView: () => void
 }) {
   const isDark = variant === 'dark'
-
   const location = [customer.city, customer.stateCode ?? customer.state]
     .filter(Boolean)
     .join(', ')
 
   return (
-    <tr className={isDark ? 'hover:bg-slate-800/60' : 'hover:bg-slate-50'}>
+    <tr className={isDark ? 'hover:bg-slate-950/70' : 'hover:bg-slate-50'}>
       <td className="px-4 py-4">
-        <div
-          className={[
-            'max-w-[280px] truncate text-sm font-semibold',
-            isDark ? 'text-white' : 'text-slate-950',
-          ].join(' ')}
-        >
-          {customer.displayName}
-        </div>
+        <div className="flex items-start gap-3">
+          <div
+            className={[
+              'mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl',
+              customerType === 'business'
+                ? isDark
+                  ? 'bg-violet-500/10 text-violet-300'
+                  : 'bg-violet-50 text-violet-700'
+                : isDark
+                  ? 'bg-blue-500/10 text-blue-300'
+                  : 'bg-blue-50 text-blue-700',
+            ].join(' ')}
+          >
+            {customerType === 'business' ? (
+              <Building2 className="h-4 w-4" />
+            ) : (
+              <UserRound className="h-4 w-4" />
+            )}
+          </div>
 
-        <div
-          className={[
-            'mt-1 text-xs',
-            isDark ? 'text-slate-400' : 'text-slate-500',
-          ].join(' ')}
-        >
-          {[customer.email, formatPhoneNumber(customer.phone)].filter(Boolean).join(' / ')}
+          <div>
+            <p className={`font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
+              {customer.displayName}
+            </p>
+            <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              {[customer.email, formatPhoneNumber(customer.phone)].filter(Boolean).join(' / ') || '-'}
+            </p>
+          </div>
         </div>
       </td>
 
-      {customerType === 'business' ? (
-        <td className="px-4 py-4">
-          <div
-            className={[
-              'text-sm font-semibold',
-              isDark ? 'text-white' : 'text-slate-950',
-            ].join(' ')}
-          >
-            {customer.contactName || '-'}
-          </div>
-          <div
-            className={[
-              'mt-1 text-xs',
-              isDark ? 'text-slate-500' : 'text-slate-400',
-            ].join(' ')}
-          >
-            Primary contact
-          </div>
-        </td>
-      ) : (
-        <td className={`px-4 py-4 text-sm ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-          {location || '-'}
-        </td>
-      )}
+      <td className={`px-4 py-4 text-sm ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+        {customerType === 'business' ? (
+          <>
+            <p className="font-medium">{customer.contactName || '-'}</p>
+            <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              Primary contact
+            </p>
+          </>
+        ) : (
+          location || '-'
+        )}
+      </td>
 
-      {customerType === 'business' ? (
-        <td className={`px-4 py-4 text-sm ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-          {location || '-'}
-        </td>
-      ) : (
-        <td className="px-4 py-4">
-          <div
-            className={[
-              'font-data text-sm font-semibold',
-              isDark ? 'text-white' : 'text-slate-950',
-            ].join(' ')}
-          >
-            {formatNumber(customer.orderCount)}
-          </div>
-          <div
-            className={[
-              'mt-1 text-xs',
-              isDark ? 'text-slate-500' : 'text-slate-400',
-            ].join(' ')}
-          >
-            orders
-          </div>
-        </td>
-      )}
+      <td className={`px-4 py-4 text-sm ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+        {customerType === 'business' ? (
+          location || '-'
+        ) : (
+          <>
+            <p className="text-right font-semibold">{formatNumber(customer.orderCount)}</p>
+            <p className={`text-right text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              orders
+            </p>
+          </>
+        )}
+      </td>
 
-      <td
-        className={[
-          'px-4 py-4 text-right font-data text-sm font-semibold',
-          isDark ? 'text-white' : 'text-slate-950',
-        ].join(' ')}
-      >
+      <td className={`px-4 py-4 text-right font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
         {formatCurrency(customer.totalRevenue)}
       </td>
 
-      <td
-        className={[
-          'px-4 py-4 text-right font-data text-sm',
-          isDark ? 'text-slate-300' : 'text-slate-600',
-        ].join(' ')}
-      >
+      <td className={`px-4 py-4 text-right text-sm ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
         {formatCurrency(customer.averageOrderValue)}
       </td>
 
@@ -778,7 +870,7 @@ function CustomerTableRow({
               : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
           ].join(' ')}
         >
-          <Eye size={15} />
+          <Eye className="h-4 w-4" />
           View
         </button>
       </td>
@@ -790,74 +882,49 @@ function CustomerDetailDrawer({
   detail,
   loading,
   error,
+  open,
   onClose,
+  onViewOrder,
   variant,
 }: {
   detail: CustomerDetailResponse | null
   loading: boolean
   error: string | null
+  open: boolean
   onClose: () => void
+  onViewOrder: (order: CustomerRecentOrder) => void
   variant: 'light' | 'dark'
 }) {
-  const isDark = variant === 'dark'
   const customer = detail?.customer
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-slate-950/40 backdrop-blur-sm">
-      <div
-        className={[
-          'h-full w-full max-w-[980px] overflow-y-auto border-l shadow-2xl',
-          isDark
-            ? 'border-slate-800 bg-slate-950 text-slate-100'
-            : 'border-slate-200 bg-white text-slate-900',
-        ].join(' ')}
-      >
-        <div
-          className={[
-            'sticky top-0 z-10 flex items-start justify-between gap-4 border-b px-6 py-5',
-            isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white',
-          ].join(' ')}
-        >
-          <div>
-            <h2 className="text-lg font-semibold">
-              {customer?.displayName ?? 'Customer Details'}
-            </h2>
-            <p className={`mt-1 text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              {customer?.type === 'business'
-                ? 'Business profile and lifetime sales history'
-                : 'Customer profile and lifetime sales history'}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className={[
-              'rounded-full border p-2 transition',
-              isDark
-                ? 'border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800'
-                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
-            ].join(' ')}
-          >
-            <X size={18} />
-          </button>
+    <RightDrawer
+      open={open}
+      title={customer?.displayName ?? 'Customer Details'}
+      subtitle={
+        customer?.type === 'business'
+          ? 'Business profile and lifetime sales history'
+          : 'Individual customer profile and lifetime sales history'
+      }
+      onClose={onClose}
+      widthClassName="max-w-5xl"
+    >
+      {loading ? (
+        <div className="rounded-2xl bg-slate-50 p-5 text-sm text-slate-500">
+          Loading customer details...
         </div>
-
-        <div className="p-6">
-          {loading ? (
-            <div className={`py-20 text-center text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              Loading customer details...
-            </div>
-          ) : error ? (
-            <div className={`py-20 text-center text-sm ${isDark ? 'text-rose-300' : 'text-rose-600'}`}>
-              {error}
-            </div>
-          ) : detail ? (
-            <CustomerDetailContent detail={detail} variant={variant} />
-          ) : null}
+      ) : error ? (
+        <div className="rounded-2xl bg-rose-50 p-5 text-sm text-rose-700">
+          {error}
         </div>
-      </div>
-    </div>
+      ) : detail ? (
+        <CustomerDetailContent
+          detail={detail}
+          variant={variant}
+          onViewOrder={onViewOrder}
+        />
+      ) : null}
+    </RightDrawer>
   )
 }
 
@@ -867,7 +934,7 @@ function DetailCard({
   variant,
 }: {
   title: string
-  children: React.ReactNode
+  children: ReactNode
   variant: 'light' | 'dark'
 }) {
   const isDark = variant === 'dark'
@@ -876,19 +943,15 @@ function DetailCard({
     <div
       className={[
         'rounded-2xl border p-4',
-        isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-slate-50',
+        isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-slate-50',
       ].join(' ')}
     >
-      <div
-        className={[
-          'mb-3 text-xs font-semibold uppercase tracking-[0.12em]',
-          isDark ? 'text-slate-500' : 'text-slate-400',
-        ].join(' ')}
-      >
+      <p className={`text-xs font-semibold uppercase tracking-wide ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
         {title}
+      </p>
+      <div className={`mt-3 text-sm ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+        {children}
       </div>
-
-      {children}
     </div>
   )
 }
@@ -908,26 +971,15 @@ function MetricBox({
     <div
       className={[
         'rounded-2xl border p-4',
-        isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-slate-50',
+        isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-slate-50',
       ].join(' ')}
     >
-      <div
-        className={[
-          'text-xs font-semibold uppercase tracking-[0.12em]',
-          isDark ? 'text-slate-500' : 'text-slate-400',
-        ].join(' ')}
-      >
+      <p className={`text-xs font-semibold uppercase tracking-wide ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
         {label}
-      </div>
-
-      <div
-        className={[
-          'mt-2 font-data text-sm font-semibold',
-          isDark ? 'text-white' : 'text-slate-950',
-        ].join(' ')}
-      >
+      </p>
+      <p className={`mt-1 font-data text-lg font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
         {value}
-      </div>
+      </p>
     </div>
   )
 }
@@ -935,9 +987,11 @@ function MetricBox({
 function CustomerDetailContent({
   detail,
   variant,
+  onViewOrder,
 }: {
   detail: CustomerDetailResponse
   variant: 'light' | 'dark'
+  onViewOrder: (order: CustomerRecentOrder) => void
 }) {
   const isDark = variant === 'dark'
   const customer = detail.customer
@@ -954,123 +1008,96 @@ function CustomerDetailContent({
     .join(', ')
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 xl:grid-cols-3">
-        <DetailCard
-          title={customer.type === 'business' ? 'Business Summary' : 'Customer Summary'}
+    <div className="space-y-5">
+      <div>
+        <h2 className={`text-xl font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
+          {customer.displayName}
+        </h2>
+
+        <div className={`mt-1 space-y-1 text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+          {customer.contactName ? <p>Contact: {customer.contactName}</p> : null}
+          {customer.email ? <p>{customer.email}</p> : null}
+          {customer.phone ? <p>{formatPhoneNumber(customer.phone)}</p> : null}
+          <p>Type: {customer.type === 'business' ? 'Business' : 'Individual'}</p>
+          <p>Created: {formatDate(customer.createdAt)}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MetricBox
+          label="Orders"
+          value={formatNumber(detail.metrics.orderCount)}
           variant={variant}
-        >
-          <div className="space-y-1">
-            <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
-              {customer.displayName}
-            </div>
+        />
+        <MetricBox
+          label="Total Revenue"
+          value={formatCurrency(detail.metrics.totalRevenue)}
+          variant={variant}
+        />
+        <MetricBox
+          label="Average Order"
+          value={formatCurrency(detail.metrics.averageOrderValue)}
+          variant={variant}
+        />
+        <MetricBox
+          label="Last Order"
+          value={formatDate(detail.metrics.lastOrderAt)}
+          variant={variant}
+        />
+      </div>
 
-            {customer.contactName ? (
-              <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Contact: {customer.contactName}
-              </div>
-            ) : null}
-
-            {customer.email ? (
-              <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {customer.email}
-              </div>
-            ) : null}
-
-            {customer.phone ? (
-              <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {formatPhoneNumber(customer.phone)}
-              </div>
-            ) : null}
-          </div>
-        </DetailCard>
-
-        <DetailCard title="Status" variant={variant}>
-          <div className="space-y-3">
-            <StatusBadge status={customer.status} variant={variant} />
-            <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              Type: {customer.type === 'business' ? 'Business' : 'Individual'}
-            </div>
-            <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              Created: {formatDate(customer.createdAt)}
-            </div>
-          </div>
-        </DetailCard>
-
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <DetailCard title="Address" variant={variant}>
-          <div className={`text-sm leading-6 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-            {address || 'No address available'}
-          </div>
+          {address || 'No address available.'}
         </DetailCard>
-      </div>
 
-      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-5">
-        <MetricBox label="Orders" value={formatNumber(detail.metrics.orderCount)} variant={variant} />
-        <MetricBox label="Revenue" value={formatCurrency(detail.metrics.totalRevenue)} variant={variant} />
-        <MetricBox label="Average Order" value={formatCurrency(detail.metrics.averageOrderValue)} variant={variant} />
-        <MetricBox label="First Order" value={formatDate(detail.metrics.firstOrderAt)} variant={variant} />
-        <MetricBox label="Last Order" value={formatDate(detail.metrics.lastOrderAt)} variant={variant} />
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-2">
         <DetailCard title="Top Product" variant={variant}>
           {detail.topProduct ? (
-            <div className="space-y-1">
-              <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
+            <>
+              <p className={`font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
                 {detail.topProduct.title}
-              </div>
-              <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {formatNumber(detail.topProduct.quantity)} units / {formatCurrency(detail.topProduct.totalValue)}
-              </div>
-            </div>
+              </p>
+              <p>
+                {formatNumber(detail.topProduct.quantity)} units /{' '}
+                {formatCurrency(detail.topProduct.totalValue)}
+              </p>
+            </>
           ) : (
-            <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              No product data available.
-            </div>
+            'No product data available.'
           )}
         </DetailCard>
 
         <DetailCard title="Favorite Channel" variant={variant}>
           {detail.favoriteChannel ? (
-            <div className="space-y-1">
-              <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
+            <>
+              <p className={`font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
                 {formatEnumLabel(detail.favoriteChannel.channel)}
-              </div>
-              <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {formatNumber(detail.favoriteChannel.orderCount)} orders / {formatCurrency(detail.favoriteChannel.revenue)}
-              </div>
-            </div>
+              </p>
+              <p>
+                {formatNumber(detail.favoriteChannel.orderCount)} orders /{' '}
+                {formatCurrency(detail.favoriteChannel.revenue)}
+              </p>
+            </>
           ) : (
-            <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              No channel data available.
-            </div>
+            'No channel data available.'
           )}
         </DetailCard>
       </div>
 
       <div>
-        <h3 className={`mb-3 text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
-          Recent Orders
+        <h3 className={`mb-3 text-base font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
+          Recent Sales Orders
         </h3>
 
-        <div
-          className={[
-            'overflow-hidden rounded-2xl border',
-            isDark ? 'border-slate-800' : 'border-slate-200',
-          ].join(' ')}
-        >
+        <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
           <div className="overflow-x-auto">
-            <table className="min-w-[780px] w-full border-collapse">
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
               <thead className={isDark ? 'bg-slate-950' : 'bg-slate-50'}>
                 <tr>
-                  {['Order', 'Date', 'Channel', 'Status', 'Payment', 'Total'].map((heading) => (
+                  {['Order', 'Date', 'Channel', 'Status', 'Payment', 'Total', ''].map((heading) => (
                     <th
                       key={heading}
-                      className={[
-                        'px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.1em]',
-                        heading === 'Total' ? 'text-right' : '',
-                        isDark ? 'text-slate-500' : 'text-slate-400',
-                      ].join(' ')}
+                      className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
                     >
                       {heading}
                     </th>
@@ -1079,38 +1106,194 @@ function CustomerDetailContent({
               </thead>
 
               <tbody
-                className={[
-                  'divide-y',
-                  isDark ? 'divide-slate-800 bg-slate-900' : 'divide-slate-100 bg-white',
-                ].join(' ')}
+                className={`divide-y text-sm ${isDark
+                    ? 'divide-slate-800 bg-slate-900 text-slate-300'
+                    : 'divide-slate-100 bg-white text-slate-700'
+                  }`}
               >
                 {detail.recentOrders.length ? (
                   detail.recentOrders.map((order) => (
                     <tr key={order.id}>
-                      <td className="px-4 py-4 font-data text-sm font-semibold">
-                        {order.orderNumber}
-                      </td>
-                      <td className="px-4 py-4 text-sm">{formatDate(order.orderedAt)}</td>
-                      <td className="px-4 py-4 text-sm">{formatEnumLabel(order.channel)}</td>
-                      <td className="px-4 py-4 text-sm">{formatEnumLabel(order.status)}</td>
-                      <td className="px-4 py-4 text-sm">{formatEnumLabel(order.paymentStatus)}</td>
-                      <td className="px-4 py-4 text-right font-data text-sm font-semibold">
-                        {formatCurrency(order.totalValue)}
+                      <td className="px-3 py-3 font-semibold">{order.orderNumber}</td>
+                      <td className="px-3 py-3">{formatDate(order.orderedAt)}</td>
+                      <td className="px-3 py-3">{formatEnumLabel(order.channel)}</td>
+                      <td className="px-3 py-3">{formatEnumLabel(order.status)}</td>
+                      <td className="px-3 py-3">{formatEnumLabel(order.paymentStatus)}</td>
+                      <td className="px-3 py-3 font-semibold">{formatCurrency(order.totalValue)}</td>
+                      <td className="px-3 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => onViewOrder(order)}
+                          className={[
+                            'inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition',
+                            isDark
+                              ? 'border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900'
+                              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+                          ].join(' ')}
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          View
+                        </button>
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
                     <td
-                      colSpan={6}
-                      className={`px-4 py-10 text-center text-sm ${
-                        isDark ? 'text-slate-400' : 'text-slate-500'
-                      }`}
+                      colSpan={7}
+                      className={`px-3 py-6 text-center ${isDark ? 'text-slate-500' : 'text-slate-400'}`}
                     >
                       No orders found.
                     </td>
                   </tr>
                 )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SalesOrderDrawer({
+  order,
+  loading,
+  error,
+  open,
+  onClose,
+  variant,
+}: {
+  order: OrderDetail | null
+  loading: boolean
+  error: string | null
+  open: boolean
+  onClose: () => void
+  variant: 'light' | 'dark'
+}) {
+  return (
+    <RightDrawer
+      open={open}
+      title={order?.orderNumber ?? 'Sales Order Details'}
+      subtitle="Sales order detail opened from customer history"
+      onClose={onClose}
+      widthClassName="max-w-5xl"
+    >
+      {loading ? (
+        <div className="rounded-2xl bg-slate-50 p-5 text-sm text-slate-500">
+          Loading sales order details...
+        </div>
+      ) : error ? (
+        <div className="rounded-2xl bg-rose-50 p-5 text-sm text-rose-700">
+          {error}
+        </div>
+      ) : order ? (
+        <SalesOrderDetailContent order={order} variant={variant} />
+      ) : null}
+    </RightDrawer>
+  )
+}
+
+function SalesOrderDetailContent({
+  order,
+  variant,
+}: {
+  order: OrderDetail
+  variant: 'light' | 'dark'
+}) {
+  const isDark = variant === 'dark'
+  const items = order.items as SalesOrderDetailItem[]
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <DetailCard title="Customer" variant={variant}>
+          <p className={`font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
+            {order.counterpartyName}
+          </p>
+          {order.counterpartyEmail ? <p>{order.counterpartyEmail}</p> : null}
+          {order.counterpartyPhone ? <p>{formatPhoneNumber(order.counterpartyPhone)}</p> : null}
+        </DetailCard>
+
+        <DetailCard title="Status" variant={variant}>
+          <p>{formatEnumLabel(order.status)}</p>
+          {order.paymentStatus ? <p>Payment: {formatEnumLabel(order.paymentStatus)}</p> : null}
+          {order.channel ? <p>Channel: {formatEnumLabel(order.channel)}</p> : null}
+        </DetailCard>
+
+        <DetailCard title="Dates" variant={variant}>
+          <p>Ordered: {formatDate(order.orderedAt)}</p>
+          {order.completedAt ? <p>Completed: {formatDate(order.completedAt)}</p> : null}
+        </DetailCard>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <MetricBox label="Subtotal" value={formatCurrency(order.totals.subtotal)} variant={variant} />
+        <MetricBox label="Discount" value={formatCurrency(order.totals.discountAmount)} variant={variant} />
+        <MetricBox label="Tax" value={formatCurrency(order.totals.taxAmount)} variant={variant} />
+        <MetricBox
+          label="Shipping / Other"
+          value={formatCurrency(Number(order.totals.shippingAmount) + Number(order.totals.otherAmount))}
+          variant={variant}
+        />
+        <MetricBox label="Grand Total" value={formatCurrency(order.totals.grandTotal)} variant={variant} />
+      </div>
+
+      <div>
+        <h3 className={`mb-3 text-base font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
+          Line Items
+        </h3>
+
+        <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
+              <thead className={isDark ? 'bg-slate-950' : 'bg-slate-50'}>
+                <tr>
+                  {[
+                    'Product',
+                    'Qty',
+                    'Unit Price',
+                    'Discount',
+                    'Final Unit',
+                    'Cost',
+                    'Total',
+                    'Profit',
+                  ].map((heading) => (
+                    <th
+                      key={heading}
+                      className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
+                    >
+                      {heading}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+
+              <tbody
+                className={`divide-y text-sm ${isDark
+                    ? 'divide-slate-800 bg-slate-900 text-slate-300'
+                    : 'divide-slate-100 bg-white text-slate-700'
+                  }`}
+              >
+                {items.map((item) => (
+                  <tr key={item.id}>
+                    <td className="px-3 py-3">
+                      <p className={`font-medium ${isDark ? 'text-white' : 'text-slate-950'}`}>
+                        {item.productTitle}
+                      </p>
+                      <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                        {[item.brandName, item.sku, item.modelNumber].filter(Boolean).join(' / ')}
+                      </p>
+                    </td>
+                    <td className="px-3 py-3">{formatNumber(item.quantity)}</td>
+                    <td className="px-3 py-3">{formatCurrency(item.unitPrice)}</td>
+                    <td className="px-3 py-3">{formatCurrency(item.discountAmount)}</td>
+                    <td className="px-3 py-3">{formatCurrency(item.finalUnitPrice)}</td>
+                    <td className="px-3 py-3">{formatCurrency(item.costBasis)}</td>
+                    <td className="px-3 py-3 font-semibold">{formatCurrency(item.lineTotal)}</td>
+                    <td className="px-3 py-3 font-semibold">{formatCurrency(item.lineProfit)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

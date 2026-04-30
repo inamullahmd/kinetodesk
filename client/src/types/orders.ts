@@ -71,6 +71,7 @@ export type OrdersQueryParams = {
   suppliers?: string[]
   page?: number
   perPage?: number
+  sort?: string
 }
 
 export type OrderDetailTotals = {

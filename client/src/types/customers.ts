@@ -50,10 +50,7 @@ export type CustomerPagination = {
 }
 
 export type CustomerFilterOptions = {
-  states: Array<{
-    code: string
-    name: string
-  }>
+  states: Array<{ code: string; name: string }>
   statuses: string[]
 }
 
@@ -112,4 +109,5 @@ export type CustomersQueryParams = {
   status?: string
   page?: number
   perPage?: number
+  sort?: string
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\api;
 
 use App\Http\Controllers\Controller;
+use App\Support\AppliesMultiColumnSorting;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -11,6 +12,8 @@ use Illuminate\Support\Facades\Schema;
 
 class CustomersController extends Controller
 {
+    use AppliesMultiColumnSorting;
+
     private const CUSTOMER_LIFESPAN_YEARS = 3;
 
     private const US_STATES = [
@@ -77,7 +80,7 @@ class CustomersController extends Controller
             'status' => trim((string) $request->query('status', 'all')),
         ];
 
-        $customersPayload = $this->getCustomerRows($type, $filters, $pagination);
+        $customersPayload = $this->getCustomerRows($request, $type, $filters, $pagination);
         $stateDistribution = $this->getStateDistribution($type);
 
         return response()->json([
@@ -263,6 +266,7 @@ class CustomersController extends Controller
     }
 
     protected function getCustomerRows(
+        Request $request,
         string $type,
         array $filters,
         array $pagination
@@ -281,19 +285,54 @@ class CustomersController extends Controller
 
         $total = (clone $query)->count('customers.id');
 
-        $rows = $query
-            ->select([
-                ...$this->customerSelectColumns(),
-                DB::raw('COALESCE(lifetime_stats.order_count, 0) as order_count'),
-                DB::raw('COALESCE(lifetime_stats.total_revenue, 0) as total_revenue'),
-                DB::raw('COALESCE(lifetime_stats.average_order_value, 0) as average_order_value'),
-                'lifetime_stats.first_order_at',
-                'lifetime_stats.last_order_at',
-            ])
-            ->orderByDesc('lifetime_stats.total_revenue')
-            ->orderBy('customers.business_name')
-            ->orderBy('customers.last_name')
-            ->orderBy('customers.first_name')
+        $rowsQuery = $query->select([
+            ...$this->customerSelectColumns(),
+            DB::raw('COALESCE(lifetime_stats.order_count, 0) as order_count'),
+            DB::raw('COALESCE(lifetime_stats.total_revenue, 0) as total_revenue'),
+            DB::raw('COALESCE(lifetime_stats.average_order_value, 0) as average_order_value'),
+            'lifetime_stats.first_order_at',
+            'lifetime_stats.last_order_at',
+        ]);
+
+        $activeColumn = $this->customerActiveColumn();
+
+        $customerAllowedSorts = [
+            'displayName' => function ($query, string $direction) use ($type) {
+                if ($type === 'business') {
+                    $query->orderByRaw(
+                        "COALESCE(NULLIF(customers.business_name, ''), NULLIF(TRIM(CONCAT(COALESCE(customers.first_name, ''), ' ', COALESCE(customers.last_name, ''))), ''), customers.email, customers.phone, customers.id) {$direction}"
+                    );
+
+                    return;
+                }
+
+                $query->orderByRaw(
+                    "COALESCE(NULLIF(TRIM(CONCAT(COALESCE(customers.first_name, ''), ' ', COALESCE(customers.last_name, ''))), ''), NULLIF(customers.business_name, ''), customers.email, customers.phone, customers.id) {$direction}"
+                );
+            },
+            'contactName' => fn ($query, string $direction) => $this->orderByCustomerContactName($query, $direction),
+            'location' => fn ($query, string $direction) => $this->orderByCustomerLocation($query, $direction),
+            'orderCount' => fn ($query, string $direction) => $query->orderByRaw("COALESCE(lifetime_stats.order_count, 0) {$direction}"),
+            'totalRevenue' => fn ($query, string $direction) => $query->orderByRaw("COALESCE(lifetime_stats.total_revenue, 0) {$direction}"),
+            'averageOrderValue' => fn ($query, string $direction) => $query->orderByRaw("COALESCE(lifetime_stats.average_order_value, 0) {$direction}"),
+            'lastOrderAt' => function ($query, string $direction) {
+                $query
+                    ->orderByRaw("CASE WHEN lifetime_stats.last_order_at IS NULL THEN 1 ELSE 0 END ASC")
+                    ->orderBy('lifetime_stats.last_order_at', $direction);
+            },
+            'status' => function ($query, string $direction) use ($activeColumn) {
+                if ($activeColumn) {
+                    $query->orderBy("customers.{$activeColumn}", $direction);
+                }
+            },
+        ];
+
+        $this->applySorts($rowsQuery, $request, $customerAllowedSorts, [
+            ['field' => 'displayName', 'direction' => 'asc'],
+        ]);
+
+        $rows = $rowsQuery
+            ->orderBy('customers.id')
             ->offset($pagination['offset'])
             ->limit($pagination['perPage'])
             ->get()

@@ -142,4 +142,5 @@ export type InventoryQueryParams = {
   serialized?: string
   page?: number
   perPage?: number
+  sort?: string
 }

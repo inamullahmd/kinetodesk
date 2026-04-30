@@ -6,6 +6,7 @@ use App\Http\Controllers\api\DashboardController;
 use App\Http\Controllers\api\OrdersController;
 use App\Http\Controllers\api\CustomersController;
 use App\Http\Controllers\api\InventoryController;
+use App\Http\Controllers\api\LookupController;
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -34,3 +35,5 @@ Route::get('/inventory/alerts', [InventoryController::class, 'alerts']);
 
 Route::get('/customers', [CustomersController::class, 'index']);
 Route::get('/customers/{id}', [CustomersController::class, 'show']);
+
+Route::get('/lookup', LookupController::class);

@@ -193,23 +193,6 @@ export default function AppHeader({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <label
-            className={[
-              'hidden h-12 w-[260px] items-center gap-2 rounded-xl border px-3 py-0 md:flex lg:w-[300px]',
-              isDark
-                ? 'border-slate-800 bg-slate-900 text-slate-300'
-                : 'border-slate-200 bg-slate-50 text-slate-500',
-            ].join(' ')}
-          >
-            <Search
-              size={16}
-              className={isDark ? 'text-slate-500' : 'text-slate-400'}
-            />
-
-            <span className={isDark ? 'text-slate-500' : 'text-slate-400'}>
-              Search...
-            </span>
-          </label>
 
           {headerDateRangeControl?.enabled ? (
             <HeaderDateRangeInput

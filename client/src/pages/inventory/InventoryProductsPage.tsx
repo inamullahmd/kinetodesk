@@ -1,29 +1,33 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import SectionCard from '../../components/dashboard/SectionCard'
+import RightDrawer from '../../components/common/RightDrawer'
+import DedicatedEntitySearch from '../../components/search/DedicatedEntitySearch'
 import { getInventoryProductDetail, getInventoryProducts } from '../../api/inventory'
 import type { DashboardOutletContext } from '../../layouts/DashboardLayout'
-import type { InventoryProductDetail, InventoryProductsResponse, InventoryProductRow } from '../../types/inventory'
+import type {
+  InventoryProductDetail,
+  InventoryProductsResponse,
+  InventoryProductRow,
+} from '../../types/inventory'
+import type { LookupResult } from '../../types/lookup'
+import { useMultiSort } from '../../hooks/useMultiSort'
 import { formatCurrency, formatNumber } from '../../utils/format'
 import {
   CheckboxGroup,
   DEFAULT_INVENTORY_DATE_RANGE,
   FilterLabel,
-  INVENTORY_MAX_DATE,
   PaginationControls,
   ProductTable,
   formatDate,
-  formatDateRangeLabel,
   formatEnumLabel,
-  normalizeDateRange,
 } from './inventoryShared'
 
 export default function InventoryProductsPage() {
   const { setHeaderRange, setHeaderDateRangeControl, theme } =
     useOutletContext<DashboardOutletContext>()
 
-  const [dateRange, setDateRange] = useState(DEFAULT_INVENTORY_DATE_RANGE)
   const [search, setSearch] = useState('')
   const [statuses, setStatuses] = useState<string[]>([])
   const [category, setCategory] = useState('all')
@@ -31,52 +35,60 @@ export default function InventoryProductsPage() {
   const [serialized, setSerialized] = useState('all')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
-
   const [data, setData] = useState<InventoryProductsResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const [selectedProduct, setSelectedProduct] = useState<InventoryProductDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState<string | null>(null)
+
+  const { sortParam, cycleSort, getSort, getSortIndex } = useMultiSort(
+    [{ field: 'product', direction: 'asc' }],
+    { onChange: () => setPage(1) },
+  )
 
   const isDark = theme === 'dark'
 
-  const updateDateRange = useCallback((nextRange: { startDate: string; endDate: string }) => {
-    setDateRange(normalizeDateRange(nextRange))
-    setPage(1)
-  }, [])
-
   useEffect(() => {
-  setHeaderRange(null)
-  setHeaderDateRangeControl(null)
-
-  return () => {
     setHeaderRange(null)
     setHeaderDateRangeControl(null)
-  }
-}, [setHeaderRange, setHeaderDateRangeControl])
+
+    return () => {
+      setHeaderRange(null)
+      setHeaderDateRangeControl(null)
+    }
+  }, [setHeaderRange, setHeaderDateRangeControl])
 
   useEffect(() => {
     let active = true
 
     async function load() {
-      setLoading(true)
+      try {
+        setLoading(true)
+        setError(null)
 
-      const response = await getInventoryProducts({
-        startDate: dateRange.startDate,
-        endDate: dateRange.endDate,
-        search,
-        statuses,
-        category,
-        brand,
-        serialized,
-        page,
-        perPage,
-      })
+        const response = await getInventoryProducts({
+          startDate: DEFAULT_INVENTORY_DATE_RANGE.startDate,
+          endDate: DEFAULT_INVENTORY_DATE_RANGE.endDate,
+          search,
+          statuses,
+          category,
+          brand,
+          serialized,
+          page,
+          perPage,
+          sort: sortParam,
+        })
 
-      if (!active) return
-
-      setData(response)
-      setLoading(false)
+        if (!active) return
+        setData(response)
+      } catch {
+        if (!active) return
+        setError('Failed to load inventory products.')
+      } finally {
+        if (active) setLoading(false)
+      }
     }
 
     load()
@@ -84,13 +96,40 @@ export default function InventoryProductsPage() {
     return () => {
       active = false
     }
-  }, [dateRange, search, statuses, category, brand, serialized, page, perPage])
+  }, [search, statuses, category, brand, serialized, page, perPage, sortParam])
 
-  async function openProduct(row: InventoryProductRow) {
-    setDetailLoading(true)
-    const response = await getInventoryProductDetail(row.id)
-    setSelectedProduct(response)
-    setDetailLoading(false)
+  async function openProductById(id: number) {
+    try {
+      setDetailLoading(true)
+      setDetailError(null)
+      setSelectedProduct(null)
+
+      const response = await getInventoryProductDetail(id)
+      setSelectedProduct(response)
+    } catch {
+      setDetailError('Failed to load product details.')
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  function openProduct(row: InventoryProductRow) {
+    void openProductById(row.id)
+  }
+
+  function openLookupProduct(result: LookupResult) {
+    if (result.type === 'inventory') {
+      void openProductById(result.id)
+    }
+  }
+
+  function resetFilters() {
+    setSearch('')
+    setStatuses([])
+    setCategory('all')
+    setBrand('all')
+    setSerialized('all')
+    setPage(1)
   }
 
   const filterOptions = useMemo(
@@ -101,7 +140,7 @@ export default function InventoryProductsPage() {
         statuses: [],
         serializedOptions: [],
       },
-    [data]
+    [data],
   )
 
   const inputClass = [
@@ -112,75 +151,131 @@ export default function InventoryProductsPage() {
   ].join(' ')
 
   return (
-    <div className="space-y-8">
-      <SectionCard title="Current Inventory" description="Current stock position by product." variant={theme}>
-        <div className="space-y-5">
-          <div className="grid gap-3 xl:grid-cols-[minmax(220px,1fr)_180px_180px_180px_140px_auto]">
-            <FilterLabel label="Search" variant={theme}>
-              <input
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value)
-                  setPage(1)
-                }}
-                placeholder="Product, SKU, model, brand..."
-                className={inputClass}
-              />
-            </FilterLabel>
+    <div className="space-y-6">
+      <div>
+        <h1 className={`text-3xl font-semibold tracking-tight ${isDark ? 'text-white' : 'text-slate-950'}`}>
+          Inventory Products
+        </h1>
+        <p className={`mt-1 text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+          Dedicated inventory lookup, sortable product list, stock value, batches, movements, and serials.
+        </p>
+      </div>
 
-            <FilterLabel label="Category" variant={theme}>
-              <select value={category} onChange={(event) => { setCategory(event.target.value); setPage(1) }} className={inputClass}>
-                <option value="all">All categories</option>
-                {filterOptions.categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select>
-            </FilterLabel>
+      <DedicatedEntitySearch
+  entity="inventory"
+  placeholder="Find product by SKU, model, title, brand, or category..."
+  onOpenResult={openLookupProduct}
+  variant={theme}
+/>
 
-            <FilterLabel label="Brand" variant={theme}>
-              <select value={brand} onChange={(event) => { setBrand(event.target.value); setPage(1) }} className={inputClass}>
-                <option value="all">All brands</option>
-                {filterOptions.brands.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select>
-            </FilterLabel>
+      <SectionCard
+        title="Products"
+        description="Inventory is not tied to the dashboard date range. Search here filters the table; direct lookup searches globally."
+        variant={theme}
+      >
+        <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-6">
+          <FilterLabel label="Search" variant={theme}>
+            <input
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value)
+                setPage(1)
+              }}
+              placeholder="Product, SKU, model, brand..."
+              className={inputClass}
+            />
+          </FilterLabel>
 
-            <FilterLabel label="Serialized" variant={theme}>
-              <select value={serialized} onChange={(event) => { setSerialized(event.target.value); setPage(1) }} className={inputClass}>
-                <option value="all">All</option>
-                <option value="serialized">Serialized</option>
-                <option value="non_serialized">Non-serialized</option>
-              </select>
-            </FilterLabel>
+          <FilterLabel label="Category" variant={theme}>
+            <select
+              value={category}
+              onChange={(event) => {
+                setCategory(event.target.value)
+                setPage(1)
+              }}
+              className={inputClass}
+            >
+              <option value="all">All categories</option>
+              {filterOptions.categories.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </FilterLabel>
 
-            <FilterLabel label="Rows" variant={theme}>
-              <select value={perPage} onChange={(event) => { setPerPage(Number(event.target.value)); setPage(1) }} className={inputClass}>
-                <option value={10}>10 rows</option>
-                <option value={15}>15 rows</option>
-                <option value={25}>25 rows</option>
-                <option value={50}>50 rows</option>
-              </select>
-            </FilterLabel>
+          <FilterLabel label="Brand" variant={theme}>
+            <select
+              value={brand}
+              onChange={(event) => {
+                setBrand(event.target.value)
+                setPage(1)
+              }}
+              className={inputClass}
+            >
+              <option value="all">All brands</option>
+              {filterOptions.brands.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </FilterLabel>
 
-            <div className="flex items-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setSearch('')
-                  setStatuses([])
-                  setCategory('all')
-                  setBrand('all')
-                  setSerialized('all')
-                  setDateRange(DEFAULT_INVENTORY_DATE_RANGE)
-                  setPage(1)
-                }}
-                className={['h-10 rounded-xl border px-4 text-sm font-semibold transition', isDark ? 'border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'].join(' ')}
-              >
-                Reset
-              </button>
-            </div>
+          <FilterLabel label="Serialization" variant={theme}>
+            <select
+              value={serialized}
+              onChange={(event) => {
+                setSerialized(event.target.value)
+                setPage(1)
+              }}
+              className={inputClass}
+            >
+              <option value="all">All</option>
+              <option value="serialized">Serialized</option>
+              <option value="non_serialized">Non-serialized</option>
+            </select>
+          </FilterLabel>
+
+          <FilterLabel label="Rows" variant={theme}>
+            <select
+              value={perPage}
+              onChange={(event) => {
+                setPerPage(Number(event.target.value))
+                setPage(1)
+              }}
+              className={inputClass}
+            >
+              <option value={10}>10 rows</option>
+              <option value={15}>15 rows</option>
+              <option value={25}>25 rows</option>
+              <option value={50}>50 rows</option>
+            </select>
+          </FilterLabel>
+
+          <div className="flex items-end">
+            <button
+              type="button"
+              onClick={resetFilters}
+              className={[
+                'h-10 rounded-xl border px-4 text-sm font-semibold transition',
+                isDark
+                  ? 'border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+              ].join(' ')}
+            >
+              Reset
+            </button>
           </div>
+        </div>
 
+        <div className="mb-4">
           <CheckboxGroup
-            label="Stock Status"
-            options={filterOptions.statuses.map((item) => ({ label: formatEnumLabel(item), value: item }))}
+            label="Statuses"
+            options={filterOptions.statuses.map((item) => ({
+              label: formatEnumLabel(item),
+              value: item,
+            }))}
             selected={statuses}
             onChange={(value) => {
               setStatuses(value)
@@ -188,28 +283,53 @@ export default function InventoryProductsPage() {
             }}
             variant={theme}
           />
-
-          {loading ? (
-            <div className={`py-12 text-center text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              Loading products...
-            </div>
-          ) : data ? (
-            <>
-              <ProductTable rows={data.rows} variant={theme} onView={openProduct} />
-              <PaginationControls pagination={data.pagination} onPageChange={setPage} variant={theme} />
-            </>
-          ) : null}
         </div>
+
+        {loading ? (
+          <div className={`rounded-2xl border p-8 text-center text-sm ${isDark ? 'border-slate-800 text-slate-400' : 'border-slate-200 text-slate-500'}`}>
+            Loading products...
+          </div>
+        ) : error ? (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-8 text-center text-sm text-rose-700">
+            {error}
+          </div>
+        ) : data && data.rows.length ? (
+          <>
+            <ProductTable
+              rows={data.rows}
+              variant={theme}
+              onView={openProduct}
+              getSort={getSort}
+              getSortIndex={getSortIndex}
+              onSort={cycleSort}
+            />
+
+            <div className="mt-4">
+              <PaginationControls
+                pagination={data.pagination}
+                onPageChange={setPage}
+                variant={theme}
+              />
+            </div>
+          </>
+        ) : (
+          <div className={`rounded-2xl border p-8 text-center text-sm ${isDark ? 'border-slate-800 text-slate-400' : 'border-slate-200 text-slate-500'}`}>
+            No products found for the selected filters.
+          </div>
+        )}
       </SectionCard>
 
-      {detailLoading || selectedProduct ? (
-        <ProductDrawer
-          product={selectedProduct}
-          loading={detailLoading}
-          onClose={() => setSelectedProduct(null)}
-          variant={theme}
-        />
-      ) : null}
+      <ProductDrawer
+        product={selectedProduct}
+        loading={detailLoading}
+        error={detailError}
+        open={detailLoading || Boolean(detailError) || Boolean(selectedProduct)}
+        onClose={() => {
+          setSelectedProduct(null)
+          setDetailError(null)
+        }}
+        variant={theme}
+      />
     </div>
   )
 }
@@ -217,107 +337,127 @@ export default function InventoryProductsPage() {
 function ProductDrawer({
   product,
   loading,
+  error,
+  open,
   onClose,
   variant,
 }: {
   product: InventoryProductDetail | null
   loading: boolean
+  error: string | null
+  open: boolean
   onClose: () => void
   variant: 'light' | 'dark'
 }) {
   const isDark = variant === 'dark'
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/40 backdrop-blur-sm">
-      <div className={['h-full w-full max-w-[960px] overflow-y-auto border-l shadow-2xl', isDark ? 'border-slate-800 bg-slate-950 text-slate-100' : 'border-slate-200 bg-white text-slate-900'].join(' ')}>
-        <div className={['sticky top-0 z-10 flex items-start justify-between border-b px-6 py-5', isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white'].join(' ')}>
+    <RightDrawer
+      open={open}
+      title={product?.title ?? 'Product Details'}
+      subtitle="Current stock, batches, movements, and serials."
+      onClose={onClose}
+      widthClassName="max-w-5xl"
+    >
+      {loading ? (
+        <div className="rounded-2xl bg-slate-50 p-5 text-sm text-slate-500">Loading product details...</div>
+      ) : error ? (
+        <div className="rounded-2xl bg-rose-50 p-5 text-sm text-rose-700">{error}</div>
+      ) : product ? (
+        <div className="space-y-5">
           <div>
-            <h2 className="text-lg font-semibold">{product?.title ?? 'Product Details'}</h2>
+            <h2 className={`text-xl font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>{product.title}</h2>
             <p className={`mt-1 text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              Current stock, batches, movements, and serials.
+              {[product.sku, product.modelNumber, product.brandName, product.categoryName, product.subCategoryName]
+                .filter(Boolean)
+                .join(' / ')}
             </p>
           </div>
 
-          <button type="button" onClick={onClose} className={['rounded-full border p-2 transition', isDark ? 'border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'].join(' ')}>
-            <X size={18} />
-          </button>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <MiniBox label="Stock" value={`${formatNumber(product.stockQty)} units`} variant={variant} />
+            <MiniBox label="Inventory Value" value={formatCurrency(product.inventoryValue)} variant={variant} />
+            <MiniBox label="Avg Unit Cost" value={formatCurrency(product.avgUnitCost)} variant={variant} />
+            <MiniBox label="Last Sold" value={formatDate(product.lastSoldAt)} variant={variant} />
+          </div>
+
+          <DetailTable
+            title="Batches"
+            headings={['Batch', 'Received', 'Qty Received', 'Qty Remaining', 'Unit Cost', 'Value', 'PO']}
+            variant={variant}
+          >
+            {product.batches.map((row) => (
+              <tr key={row.id}>
+                <td className="px-3 py-3">{row.batchCode || '-'}</td>
+                <td className="px-3 py-3">{formatDate(row.receivedAt)}</td>
+                <td className="px-3 py-3">{formatNumber(row.qtyReceived)}</td>
+                <td className="px-3 py-3">{formatNumber(row.qtyRemaining)}</td>
+                <td className="px-3 py-3">{formatCurrency(row.unitCost)}</td>
+                <td className="px-3 py-3">{formatCurrency(row.remainingValue)}</td>
+                <td className="px-3 py-3">{row.purchaseOrderNumber || '-'}</td>
+              </tr>
+            ))}
+          </DetailTable>
+
+          <DetailTable
+            title="Movements"
+            headings={['Date', 'Type', 'Qty Change', 'Batch', 'Unit Cost', 'Reference']}
+            variant={variant}
+          >
+            {product.movements.map((row) => (
+              <tr key={row.id}>
+                <td className="px-3 py-3">{formatDate(row.movedAt)}</td>
+                <td className="px-3 py-3">{formatEnumLabel(row.movementType)}</td>
+                <td className={`px-3 py-3 font-semibold ${row.qtyChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {row.qtyChange >= 0 ? '+' : ''}
+                  {row.qtyChange}
+                </td>
+                <td className="px-3 py-3">{row.batchCode || '-'}</td>
+                <td className="px-3 py-3">{row.unitCost ? formatCurrency(row.unitCost) : '-'}</td>
+                <td className="px-3 py-3">{[row.referenceType, row.referenceId].filter(Boolean).join(' #') || '-'}</td>
+              </tr>
+            ))}
+          </DetailTable>
+
+          {product.isSerialized ? (
+            <DetailTable
+              title="Serials"
+              headings={['Serial Number', 'Status', 'Batch', 'Received']}
+              variant={variant}
+            >
+              {product.serials.map((row) => (
+                <tr key={row.id}>
+                  <td className="px-3 py-3 font-data">{row.serialNumber}</td>
+                  <td className="px-3 py-3">{formatEnumLabel(row.status)}</td>
+                  <td className="px-3 py-3">{row.batchCode || '-'}</td>
+                  <td className="px-3 py-3">{formatDate(row.receivedAt)}</td>
+                </tr>
+              ))}
+            </DetailTable>
+          ) : null}
         </div>
-
-        <div className="p-6">
-          {loading || !product ? (
-            <div className={`py-20 text-center text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              Loading product details...
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-4">
-                <MiniBox label="Stock" value={`${formatNumber(product.stockQty)} units`} variant={variant} />
-                <MiniBox label="Inventory Value" value={formatCurrency(product.inventoryValue)} variant={variant} />
-                <MiniBox label="Avg Cost" value={formatCurrency(product.avgUnitCost)} variant={variant} />
-                <MiniBox label="Last Sold" value={formatDate(product.lastSoldAt)} variant={variant} />
-              </div>
-
-              <div className={['rounded-2xl border p-4', isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-slate-50'].join(' ')}>
-                <div className="font-semibold">{product.title}</div>
-                <div className={`mt-2 text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                  {[product.sku, product.modelNumber, product.brandName, product.categoryName, product.subCategoryName].filter(Boolean).join(' / ')}
-                </div>
-              </div>
-
-              <DetailTable title="Open Batches" variant={variant} headings={['Batch', 'Received', 'Received Qty', 'Remaining Qty', 'Unit Cost', 'Remaining Value', 'PO']}>
-                {product.batches.map((row) => (
-                  <tr key={row.id}>
-                    <td className="px-4 py-3">{row.batchCode || '-'}</td>
-                    <td className="px-4 py-3">{formatDate(row.receivedAt)}</td>
-                    <td className="px-4 py-3 font-data">{formatNumber(row.qtyReceived)}</td>
-                    <td className="px-4 py-3 font-data">{formatNumber(row.qtyRemaining)}</td>
-                    <td className="px-4 py-3 font-data">{formatCurrency(row.unitCost)}</td>
-                    <td className="px-4 py-3 font-data">{formatCurrency(row.remainingValue)}</td>
-                    <td className="px-4 py-3">{row.purchaseOrderNumber || '-'}</td>
-                  </tr>
-                ))}
-              </DetailTable>
-
-              <DetailTable title="Recent Movements" variant={variant} headings={['Date', 'Type', 'Qty', 'Batch', 'Unit Cost', 'Reference']}>
-                {product.movements.map((row) => (
-                  <tr key={row.id}>
-                    <td className="px-4 py-3">{formatDate(row.movedAt)}</td>
-                    <td className="px-4 py-3">{formatEnumLabel(row.movementType)}</td>
-                    <td className={`px-4 py-3 font-data font-semibold ${row.qtyChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{row.qtyChange >= 0 ? '+' : ''}{row.qtyChange}</td>
-                    <td className="px-4 py-3">{row.batchCode || '-'}</td>
-                    <td className="px-4 py-3 font-data">{row.unitCost ? formatCurrency(row.unitCost) : '-'}</td>
-                    <td className="px-4 py-3">{[row.referenceType, row.referenceId].filter(Boolean).join(' #') || '-'}</td>
-                  </tr>
-                ))}
-              </DetailTable>
-
-              {product.isSerialized ? (
-                <DetailTable title="Serial Numbers" variant={variant} headings={['Serial', 'Status', 'Batch', 'Received']}>
-                  {product.serials.map((row) => (
-                    <tr key={row.id}>
-                      <td className="px-4 py-3 font-data">{row.serialNumber}</td>
-                      <td className="px-4 py-3">{formatEnumLabel(row.status)}</td>
-                      <td className="px-4 py-3">{row.batchCode || '-'}</td>
-                      <td className="px-4 py-3">{formatDate(row.receivedAt)}</td>
-                    </tr>
-                  ))}
-                </DetailTable>
-              ) : null}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+      ) : null}
+    </RightDrawer>
   )
 }
 
-function MiniBox({ label, value, variant }: { label: string; value: string; variant: 'light' | 'dark' }) {
+function MiniBox({
+  label,
+  value,
+  variant,
+}: {
+  label: string
+  value: string
+  variant: 'light' | 'dark'
+}) {
   const isDark = variant === 'dark'
 
   return (
-    <div className={['rounded-2xl border p-4', isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-slate-50'].join(' ')}>
-      <div className={`text-xs font-semibold uppercase tracking-[0.12em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{label}</div>
-      <div className={`mt-2 font-data text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>{value}</div>
+    <div className={`rounded-2xl border p-4 ${isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-slate-50'}`}>
+      <p className={`text-xs font-semibold uppercase tracking-wide ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+        {label}
+      </p>
+      <p className={`mt-1 font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>{value}</p>
     </div>
   )
 }
@@ -330,27 +470,27 @@ function DetailTable({
 }: {
   title: string
   headings: string[]
-  children: React.ReactNode
+  children: ReactNode
   variant: 'light' | 'dark'
 }) {
   const isDark = variant === 'dark'
 
   return (
     <div>
-      <h3 className={`mb-3 text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>{title}</h3>
-      <div className={['overflow-hidden rounded-2xl border', isDark ? 'border-slate-800' : 'border-slate-200'].join(' ')}>
+      <h3 className={`mb-3 text-base font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>{title}</h3>
+      <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
         <div className="overflow-x-auto">
-          <table className="min-w-[860px] w-full border-collapse">
+          <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
             <thead className={isDark ? 'bg-slate-950' : 'bg-slate-50'}>
               <tr>
                 {headings.map((heading) => (
-                  <th key={heading} className={['px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.1em]', isDark ? 'text-slate-500' : 'text-slate-400'].join(' ')}>
+                  <th key={heading} className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     {heading}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className={['divide-y text-sm', isDark ? 'divide-slate-800 bg-slate-900' : 'divide-slate-100 bg-white'].join(' ')}>
+            <tbody className={`divide-y text-sm ${isDark ? 'divide-slate-800 bg-slate-900 text-slate-300' : 'divide-slate-100 bg-white text-slate-700'}`}>
               {children}
             </tbody>
           </table>
