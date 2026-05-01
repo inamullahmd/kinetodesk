@@ -23,7 +23,7 @@ return new class extends Migration
             $table->timestamps();
 
             # Adding indexes for active and role for faster queries
-            $table->index(['active', 'role']);
+            $table->index(['is_active', 'role']);
         });
     }
 
