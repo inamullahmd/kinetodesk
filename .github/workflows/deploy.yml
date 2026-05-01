@@ -1,0 +1,176 @@
+name: Deploy Kinetodesk to Hostinger
+
+on:
+  push:
+    branches:
+      - source
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------------
+      # Frontend: React Vite
+      # Folder: client/
+      # -----------------------------
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: client
+        run: npm run build
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+
+      # -----------------------------
+      # Backend: Laravel
+      # Folder: server/
+      # -----------------------------
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, bcmath, ctype, fileinfo, json, openssl, pdo, tokenizer, xml, curl, zip
+          tools: composer:v2
+
+      - name: Install Laravel dependencies
+        working-directory: server
+        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+
+      # -----------------------------
+      # SSH setup
+      # -----------------------------
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "${{ secrets.HOSTINGER_PORT }}" "${{ secrets.HOSTINGER_HOST }}" >> ~/.ssh/known_hosts
+
+      # -----------------------------
+      # Make sure remote folders exist
+      # -----------------------------
+      - name: Create remote directories
+        run: |
+          ssh -p "${{ secrets.HOSTINGER_PORT }}" \
+            -i ~/.ssh/id_ed25519 \
+            "${{ secrets.HOSTINGER_USER }}@${{ secrets.HOSTINGER_HOST }}" \
+            "mkdir -p '${{ secrets.HOSTINGER_CLIENT_DIR }}' '${{ secrets.HOSTINGER_SERVER_DIR }}' '${{ secrets.HOSTINGER_API_PUBLIC_DIR }}'"
+
+      # -----------------------------
+      # Deploy React frontend
+      # client/dist -> public_html/kinetodesk
+      # -----------------------------
+      - name: Deploy frontend
+        run: |
+          rsync -avz --delete \
+            -e "ssh -p ${{ secrets.HOSTINGER_PORT }} -i ~/.ssh/id_ed25519" \
+            client/dist/ \
+            "${{ secrets.HOSTINGER_USER }}@${{ secrets.HOSTINGER_HOST }}:${{ secrets.HOSTINGER_CLIENT_DIR }}/"
+
+      # -----------------------------
+      # Deploy full Laravel app outside public_html
+      # server -> kinetodesk-server
+      # -----------------------------
+      - name: Deploy Laravel backend
+        run: |
+          rsync -avz --delete \
+            -e "ssh -p ${{ secrets.HOSTINGER_PORT }} -i ~/.ssh/id_ed25519" \
+            server/ \
+            "${{ secrets.HOSTINGER_USER }}@${{ secrets.HOSTINGER_HOST }}:${{ secrets.HOSTINGER_SERVER_DIR }}/" \
+            --exclude=".env" \
+            --exclude="storage/" \
+            --exclude="bootstrap/cache/*.php" \
+            --exclude="node_modules/" \
+            --exclude=".git/"
+
+      # -----------------------------
+      # Deploy only Laravel public files to API subdomain folder
+      # server/public -> public_html/api-kinetodesk
+      # -----------------------------
+      - name: Deploy Laravel public folder
+        run: |
+          rsync -avz --delete \
+            -e "ssh -p ${{ secrets.HOSTINGER_PORT }} -i ~/.ssh/id_ed25519" \
+            server/public/ \
+            "${{ secrets.HOSTINGER_USER }}@${{ secrets.HOSTINGER_HOST }}:${{ secrets.HOSTINGER_API_PUBLIC_DIR }}/"
+
+      # -----------------------------
+      # Fix Laravel public/index.php paths
+      # because public folder is separate from the Laravel app folder
+      # -----------------------------
+      - name: Fix Laravel public index paths
+        run: |
+          ssh -p "${{ secrets.HOSTINGER_PORT }}" \
+            -i ~/.ssh/id_ed25519 \
+            "${{ secrets.HOSTINGER_USER }}@${{ secrets.HOSTINGER_HOST }}" << EOF
+              cd "${{ secrets.HOSTINGER_API_PUBLIC_DIR }}"
+
+              php -r "
+                \$index = file_get_contents('index.php');
+
+                \$index = str_replace(
+                  \"__DIR__.'/../vendor/autoload.php'\",
+                  \"'${{ secrets.HOSTINGER_SERVER_DIR }}/vendor/autoload.php'\",
+                  \$index
+                );
+
+                \$index = str_replace(
+                  \"__DIR__.'/../bootstrap/app.php'\",
+                  \"'${{ secrets.HOSTINGER_SERVER_DIR }}/bootstrap/app.php'\",
+                  \$index
+                );
+
+                file_put_contents('index.php', \$index);
+              "
+          EOF
+
+      # -----------------------------
+      # Prepare Laravel storage/cache folders
+      # -----------------------------
+      - name: Prepare Laravel writable directories
+        run: |
+          ssh -p "${{ secrets.HOSTINGER_PORT }}" \
+            -i ~/.ssh/id_ed25519 \
+            "${{ secrets.HOSTINGER_USER }}@${{ secrets.HOSTINGER_HOST }}" << EOF
+              cd "${{ secrets.HOSTINGER_SERVER_DIR }}"
+
+              mkdir -p storage/app
+              mkdir -p storage/framework/cache
+              mkdir -p storage/framework/sessions
+              mkdir -p storage/framework/views
+              mkdir -p storage/logs
+              mkdir -p bootstrap/cache
+
+              chmod -R 775 storage bootstrap/cache
+          EOF
+
+      # -----------------------------
+      # Laravel production commands
+      # -----------------------------
+      - name: Run Laravel production commands
+        run: |
+          ssh -p "${{ secrets.HOSTINGER_PORT }}" \
+            -i ~/.ssh/id_ed25519 \
+            "${{ secrets.HOSTINGER_USER }}@${{ secrets.HOSTINGER_HOST }}" << EOF
+              cd "${{ secrets.HOSTINGER_SERVER_DIR }}"
+
+              php artisan migrate --force
+
+              php artisan optimize:clear
+              php artisan config:cache
+              php artisan route:cache
+              php artisan view:cache
+          EOF
