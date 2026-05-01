@@ -5,6 +5,17 @@ on:
     branches:
       - source
 
+  workflow_dispatch:
+    inputs:
+      seed_database:
+        description: "Run database seeders?"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -55,7 +66,7 @@ jobs:
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          printf "%s\n" "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -p "${{ secrets.HOSTINGER_PORT }}" "${{ secrets.HOSTINGER_HOST }}" >> ~/.ssh/known_hosts
 
@@ -105,11 +116,12 @@ jobs:
           rsync -avz --delete \
             -e "ssh -p ${{ secrets.HOSTINGER_PORT }} -i ~/.ssh/id_ed25519" \
             server/public/ \
-            "${{ secrets.HOSTINGER_USER }}@${{ secrets.HOSTINGER_HOST }}:${{ secrets.HOSTINGER_API_PUBLIC_DIR }}/"
+            "${{ secrets.HOSTINGER_USER }}@${{ secrets.HOSTINGER_HOST }}:${{ secrets.HOSTINGER_API_PUBLIC_DIR }}/" \
+            --exclude="storage/"
 
       # -----------------------------
       # Fix Laravel public/index.php paths
-      # because public folder is separate from the Laravel app folder
+      # because API public folder is separate from the Laravel app folder
       # -----------------------------
       - name: Fix Laravel public index paths
         run: |
@@ -118,27 +130,14 @@ jobs:
             "${{ secrets.HOSTINGER_USER }}@${{ secrets.HOSTINGER_HOST }}" << EOF
               cd "${{ secrets.HOSTINGER_API_PUBLIC_DIR }}"
 
-              php -r "
-                \$index = file_get_contents('index.php');
+              perl -0pi -e "s#__DIR__\s*\.\s*'/\.\./vendor/autoload\.php'#'${{ secrets.HOSTINGER_SERVER_DIR }}/vendor/autoload.php'#g" index.php
+              perl -0pi -e "s#__DIR__\s*\.\s*'/\.\./bootstrap/app\.php'#'${{ secrets.HOSTINGER_SERVER_DIR }}/bootstrap/app.php'#g" index.php
 
-                \$index = str_replace(
-                  \"__DIR__.'/../vendor/autoload.php'\",
-                  \"'${{ secrets.HOSTINGER_SERVER_DIR }}/vendor/autoload.php'\",
-                  \$index
-                );
-
-                \$index = str_replace(
-                  \"__DIR__.'/../bootstrap/app.php'\",
-                  \"'${{ secrets.HOSTINGER_SERVER_DIR }}/bootstrap/app.php'\",
-                  \$index
-                );
-
-                file_put_contents('index.php', \$index);
-              "
+              grep -n "vendor/autoload.php\|bootstrap/app.php" index.php
           EOF
 
       # -----------------------------
-      # Prepare Laravel storage/cache folders
+      # Prepare Laravel writable directories
       # -----------------------------
       - name: Prepare Laravel writable directories
         run: |
@@ -168,6 +167,10 @@ jobs:
               cd "${{ secrets.HOSTINGER_SERVER_DIR }}"
 
               php artisan migrate --force
+
+              if [ "${{ github.event.inputs.seed_database }}" = "true" ]; then
+                php artisan db:seed --force
+              fi
 
               php artisan optimize:clear
               php artisan config:cache
