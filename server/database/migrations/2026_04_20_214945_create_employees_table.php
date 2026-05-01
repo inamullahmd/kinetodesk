@@ -19,7 +19,7 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->string('phone_number')->nullable();
             $table->enum('role', ['owner', 'manager', 'sales_representative', 'cashier'])->default('sales_representative');
-            $table->boolean('active')->default(true);
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
 
             # Adding indexes for active and role for faster queries

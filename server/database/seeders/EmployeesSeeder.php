@@ -21,7 +21,7 @@ class EmployeesSeeder extends Seeder
                 'email' => 'hrithik.roshan@kinetodesk.local',
                 'phone_number' => '+12025550111',
                 'role' => 'owner',
-                'active' => true,
+                'is_active' => true,
             ],
             [
                 'employee_number' => '4071936825',
@@ -30,7 +30,7 @@ class EmployeesSeeder extends Seeder
                 'email' => 'priya.sharma@kinetodesk.local',
                 'phone_number' => '+12025550112',
                 'role' => 'manager',
-                'active' => true,
+                'is_active' => true,
             ],
             [
                 'employee_number' => '5830147296',
@@ -39,7 +39,7 @@ class EmployeesSeeder extends Seeder
                 'email' => 'john.carter@kinetodesk.local',
                 'phone_number' => '+12025550101',
                 'role' => 'sales_representative',
-                'active' => true,
+                'is_active' => true,
             ],
             [
                 'employee_number' => '2147698350',
@@ -48,7 +48,7 @@ class EmployeesSeeder extends Seeder
                 'email' => 'sarah.mitchell@kinetodesk.local',
                 'phone_number' => '+12025550102',
                 'role' => 'sales_representative',
-                'active' => true,
+                'is_active' => true,
             ],
             [
                 'employee_number' => '4618209573',
@@ -57,7 +57,7 @@ class EmployeesSeeder extends Seeder
                 'email' => 'daniel.reed@kinetodesk.local',
                 'phone_number' => '+12025550103',
                 'role' => 'cashier',
-                'active' => true,
+                'is_active' => true,
             ],
             [
                 'employee_number' => '9073154628',
@@ -66,7 +66,7 @@ class EmployeesSeeder extends Seeder
                 'email' => 'michael.brooks@kinetodesk.local',
                 'phone_number' => '+12025550104',
                 'role' => 'sales_representative',
-                'active' => true,
+                'is_active' => true,
             ],
             [
                 'employee_number' => '7385921046',
@@ -75,7 +75,7 @@ class EmployeesSeeder extends Seeder
                 'email' => 'emily.turner@kinetodesk.local',
                 'phone_number' => '+12025550105',
                 'role' => 'sales_representative',
-                'active' => true,
+                'is_active' => true,
             ],
             [
                 'employee_number' => '6241859037',
@@ -84,7 +84,7 @@ class EmployeesSeeder extends Seeder
                 'email' => 'jacob.foster@kinetodesk.local',
                 'phone_number' => '+12025550106',
                 'role' => 'sales_representative',
-                'active' => true,
+                'is_active' => true,
             ],
             [
                 'employee_number' => '8459203617',
@@ -93,7 +93,7 @@ class EmployeesSeeder extends Seeder
                 'email' => 'olivia.parker@kinetodesk.local',
                 'phone_number' => '+12025550107',
                 'role' => 'sales_representative',
-                'active' => true,
+                'is_active' => true,
             ],
             [
                 'employee_number' => '3916728450',
@@ -102,7 +102,7 @@ class EmployeesSeeder extends Seeder
                 'email' => 'ethan.collins@kinetodesk.local',
                 'phone_number' => '+12025550108',
                 'role' => 'sales_representative',
-                'active' => true,
+                'is_active' => true,
             ],
             [
                 'employee_number' => '5728491036',
@@ -111,7 +111,7 @@ class EmployeesSeeder extends Seeder
                 'email' => 'carlos.ramirez@kinetodesk.local',
                 'phone_number' => '+12025550109',
                 'role' => 'sales_representative',
-                'active' => true,
+                'is_active' => true,
             ],
             [
                 'employee_number' => '1683047592',
@@ -120,7 +120,7 @@ class EmployeesSeeder extends Seeder
                 'email' => 'sofia.hernandez@kinetodesk.local',
                 'phone_number' => '+12025550110',
                 'role' => 'sales_representative',
-                'active' => true,
+                'is_active' => true,
             ],
         ];
         

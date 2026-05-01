@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import {
-  BarChart3,
   Boxes,
   CalendarDays,
   ChevronDown,
@@ -131,8 +130,8 @@ export default function AppSidebar({ theme }: AppSidebarProps) {
   const isDark = theme === 'dark'
 
   const inventoryActive = location.pathname.startsWith('/inventory')
-  const directoryActive =
-    location.pathname.startsWith('/directory') || location.pathname === '/customers'
+  const directoryActive = location.pathname.startsWith('/directory')
+  
 
   const [inventoryOpen, setInventoryOpen] = useState(inventoryActive)
   const [directoryOpen, setDirectoryOpen] = useState(directoryActive)
@@ -320,13 +319,6 @@ export default function AppSidebar({ theme }: AppSidebarProps) {
           label="Pages"
           to="/pages"
           icon={<WalletCards size={19} />}
-          theme={theme}
-        />
-
-        <SidebarLink
-          label="Reports"
-          to="/reports"
-          icon={<BarChart3 size={19} />}
           theme={theme}
         />
       </nav>

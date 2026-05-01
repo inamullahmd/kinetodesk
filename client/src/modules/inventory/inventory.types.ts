@@ -74,6 +74,21 @@ export type InventoryAlertsResponse = {
   filterOptions: InventoryFilterOptions
 }
 
+export type InventoryRecentMovement = {
+  id: number
+  movedAt?: string | null
+  movementType: string
+  qtyChange: number
+  unitCost?: number | string | null
+  referenceType?: string | null
+  referenceId?: number | string | null
+  batchCode?: string | null
+  productTitle: string
+  sku?: string | null
+  modelNumber?: string | null
+  brandName?: string | null
+}
+
 export type InventoryAlertsQueryParams = InventoryQueryParams
 
 export type InventoryOverviewSummary = {
@@ -106,6 +121,7 @@ export type InventoryOverviewResponse = {
   summary: InventoryOverviewSummary
   categoryBreakdown: InventoryCategoryBreakdown[]
   lowStockProducts: InventoryProductRow[]
+  recentMovements: InventoryRecentMovement[]
 }
 
 export type StockBatchRow = {

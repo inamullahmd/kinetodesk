@@ -56,7 +56,7 @@ class InventoryController extends Controller
             ->orderByDesc('inventory_value')
             ->limit(8)
             ->get()
-            ->map(fn ($row) => [
+            ->map(fn($row) => [
                 'categoryName' => $row->category,
                 'productCount' => (int) $row->product_count,
                 'stockQty' => (float) $row->stock_units,
@@ -69,15 +69,51 @@ class InventoryController extends Controller
             ->toArray();
 
         $lowStockProducts = $this->baseProductRowsQuery($range['endDate'])
-            ->whereRaw('COALESCE(stock_summary.stock_qty, 0) > 0')
             ->whereRaw('COALESCE(stock_summary.stock_qty, 0) <= ?', [self::LOW_STOCK_THRESHOLD])
             ->select($this->productRowSelectColumns())
             ->orderBy('stock_qty')
             ->orderBy('products.title')
-            ->limit(8)
+            ->limit(4)
             ->get()
-            ->map(fn ($row) => $this->mapProductRow($row))
+            ->map(fn($row) => $this->mapProductRow($row))
             ->toArray();
+
+        $recentMovements = DB::table('stock_movements')
+    ->join('products', 'stock_movements.product_id', '=', 'products.id')
+    ->join('brands', 'products.brand_id', '=', 'brands.id')
+    ->leftJoin('stock_batches', 'stock_movements.stock_batch_id', '=', 'stock_batches.id')
+    ->select([
+        'stock_movements.id',
+        'stock_movements.moved_at',
+        'stock_movements.movement_type',
+        'stock_movements.qty_change',
+        'stock_movements.unit_cost',
+        'stock_movements.reference_type',
+        'stock_movements.reference_id',
+        'stock_batches.batch_code',
+        'products.title as product_title',
+        'products.internal_sku',
+        'products.model_number',
+        'brands.name as brand_name',
+    ])
+    ->orderByDesc('stock_movements.moved_at')
+    ->limit(8)
+    ->get()
+    ->map(fn ($row) => [
+        'id' => (int) $row->id,
+        'movedAt' => $this->dateString($row->moved_at),
+        'movementType' => $row->movement_type,
+        'qtyChange' => (float) $row->qty_change,
+        'unitCost' => $row->unit_cost !== null ? round((float) $row->unit_cost, 2) : null,
+        'referenceType' => $row->reference_type,
+        'referenceId' => $row->reference_id,
+        'batchCode' => $row->batch_code,
+        'productTitle' => $row->product_title,
+        'sku' => $row->internal_sku,
+        'modelNumber' => $row->model_number,
+        'brandName' => $row->brand_name,
+    ])
+    ->toArray();
 
         return response()->json([
             'summary' => [
@@ -96,6 +132,7 @@ class InventoryController extends Controller
             ],
             'categoryBreakdown' => $categoryBreakdown,
             'lowStockProducts' => $lowStockProducts,
+            'recentMovements' => $recentMovements,
         ]);
     }
 
@@ -130,7 +167,7 @@ class InventoryController extends Controller
             ->offset($pagination['offset'])
             ->limit($pagination['perPage'])
             ->get()
-            ->map(fn ($row) => $this->mapProductRow($row))
+            ->map(fn($row) => $this->mapProductRow($row))
             ->toArray();
 
         return response()->json([
@@ -177,7 +214,7 @@ class InventoryController extends Controller
             ->offset($pagination['offset'])
             ->limit($pagination['perPage'])
             ->get()
-            ->map(fn ($row) => $this->mapAlertRow($row, $filters['alertTypes'], $range['endDate']))
+            ->map(fn($row) => $this->mapAlertRow($row, $filters['alertTypes'], $range['endDate']))
             ->toArray();
 
         return response()->json([
@@ -551,7 +588,7 @@ class InventoryController extends Controller
             ->orderByDesc('stock_batches.received_at')
             ->limit(20)
             ->get()
-            ->map(fn ($row) => [
+            ->map(fn($row) => [
                 'id' => (int) $row->id,
                 'batchCode' => $row->batch_code,
                 'receivedAt' => $this->dateString($row->received_at),
@@ -582,7 +619,7 @@ class InventoryController extends Controller
             ->orderByDesc('stock_movements.moved_at')
             ->limit(30)
             ->get()
-            ->map(fn ($row) => [
+            ->map(fn($row) => [
                 'id' => (int) $row->id,
                 'movedAt' => $this->dateString($row->moved_at),
                 'movementType' => $row->movement_type,
@@ -610,7 +647,7 @@ class InventoryController extends Controller
             ->orderBy('product_serials.serial_number')
             ->limit(50)
             ->get()
-            ->map(fn ($row) => [
+            ->map(fn($row) => [
                 'id' => (int) $row->id,
                 'serialNumber' => $row->serial_number,
                 'status' => $row->status,
@@ -626,7 +663,7 @@ class InventoryController extends Controller
             ->select(['id', 'name'])
             ->orderBy('name')
             ->get()
-            ->map(fn ($row) => [
+            ->map(fn($row) => [
                 'id' => (int) $row->id,
                 'name' => $row->name,
             ])
@@ -636,7 +673,7 @@ class InventoryController extends Controller
             ->select(['id', 'name'])
             ->orderBy('name')
             ->get()
-            ->map(fn ($row) => [
+            ->map(fn($row) => [
                 'id' => (int) $row->id,
                 'name' => $row->name,
             ])
@@ -701,7 +738,7 @@ class InventoryController extends Controller
         $value = $request->query($key, []);
 
         if (is_array($value)) {
-            return array_values(array_filter($value, fn ($item) => $item !== null && $item !== ''));
+            return array_values(array_filter($value, fn($item) => $item !== null && $item !== ''));
         }
 
         if (is_string($value) && trim($value) !== '') {

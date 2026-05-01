@@ -10,6 +10,7 @@ import {
   formatCurrency,
   formatNumber,
   formatEnumLabel,
+  formatDate
 } from '../../shared/utils/format'
 import {
   DEFAULT_INVENTORY_DATE_RANGE,
@@ -306,8 +307,8 @@ export default function InventoryOverviewPage() {
             ) : (
               <div
                 className={`rounded-2xl border p-8 text-center text-sm ${isDark
-                    ? 'border-slate-800 text-slate-400'
-                    : 'border-slate-200 text-slate-500'
+                  ? 'border-slate-800 text-slate-400'
+                  : 'border-slate-200 text-slate-500'
                   }`}
               >
                 No category data available.
@@ -338,8 +339,8 @@ export default function InventoryOverviewPage() {
             ) : (
               <div
                 className={`rounded-2xl border p-8 text-center text-sm ${isDark
-                    ? 'border-slate-800 text-slate-400'
-                    : 'border-slate-200 text-slate-500'
+                  ? 'border-slate-800 text-slate-400'
+                  : 'border-slate-200 text-slate-500'
                   }`}
               >
                 No low-stock products found.
@@ -349,39 +350,87 @@ export default function InventoryOverviewPage() {
         </SectionCard>
       </div>
 
-      <SectionCard
-        title="Inventory Activity"
-        description="Open a product from Inventory Products or Inventory Alerts to view batches, serials, and stock movements."
-        variant={theme}
-        action={
-          <Link
-            to="/inventory/products"
-            className={`text-sm font-semibold ${isDark ? 'text-blue-300' : 'text-blue-600'
-              }`}
-          >
-            Browse products
-          </Link>
-        }
-      >
-        <div
-          className={[
-            'rounded-2xl border p-6',
-            isDark
-              ? 'border-slate-800 bg-slate-950/40 text-slate-400'
-              : 'border-slate-200 bg-white text-slate-500',
-          ].join(' ')}
-        >
-          <div className="text-sm">
-            Product-level stock movements are available in each product detail drawer.
-          </div>
+      <div>
+        <SectionCard
+  title="Recent Stock Movements"
+  description="Latest inventory quantity changes across products and batches."
+  variant={theme}
+>
+  <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[920px] divide-y divide-slate-200 dark:divide-slate-800">
+        <thead className={isDark ? 'bg-slate-950' : 'bg-slate-50'}>
+          <tr>
+            {['Date', 'Product', 'Movement', 'Qty', 'Batch', 'Unit Cost', 'Reference'].map((heading) => (
+              <th
+                key={heading}
+                className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
+              >
+                {heading}
+              </th>
+            ))}
+          </tr>
+        </thead>
 
-          <div className="mt-3 grid gap-3 md:grid-cols-3">
-            <InfoBox label="Batches" value="Open product detail" variant={theme} />
-            <InfoBox label="Movements" value="Recent movement history" variant={theme} />
-            <InfoBox label="Serials" value="Serialized product tracking" variant={theme} />
-          </div>
-        </div>
-      </SectionCard>
+        <tbody
+          className={`divide-y text-sm ${
+            isDark
+              ? 'divide-slate-800 bg-slate-900 text-slate-300'
+              : 'divide-slate-100 bg-white text-slate-700'
+          }`}
+        >
+          {data.recentMovements?.length ? (
+            data.recentMovements.map((movement) => (
+              <tr key={movement.id}>
+                <td className="px-4 py-3">{formatDate(movement.movedAt)}</td>
+
+                <td className="px-4 py-3">
+                  <p className={`font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
+                    {movement.productTitle}
+                  </p>
+                  <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    {[movement.sku, movement.brandName, movement.modelNumber].filter(Boolean).join(' / ') || '-'}
+                  </p>
+                </td>
+
+                <td className="px-4 py-3">{formatEnumLabel(movement.movementType)}</td>
+
+                <td
+                  className={[
+                    'px-4 py-3 font-data font-semibold',
+                    movement.qtyChange >= 0 ? 'text-emerald-600' : 'text-rose-600',
+                  ].join(' ')}
+                >
+                  {movement.qtyChange >= 0 ? '+' : ''}
+                  {formatNumber(movement.qtyChange)}
+                </td>
+
+                <td className="px-4 py-3">{movement.batchCode || '-'}</td>
+
+                <td className="px-4 py-3 font-data">
+                  {movement.unitCost !== null && movement.unitCost !== undefined
+                    ? formatCurrency(movement.unitCost)
+                    : '-'}
+                </td>
+
+                <td className="px-4 py-3">
+                  {[movement.referenceType, movement.referenceId].filter(Boolean).join(' #') || '-'}
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500">
+                No recent stock movements found.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</SectionCard>
+      </div>
     </div>
   )
 }

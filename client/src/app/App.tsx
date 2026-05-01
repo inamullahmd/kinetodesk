@@ -22,8 +22,6 @@ export default function App() {
         <Route path="/inventory/products" element={<InventoryProductsPage />} />
         <Route path="/inventory/alerts" element={<InventoryAlertsPage />} />
 
-        <Route path="/customers" element={<CustomersPage />} />
-        <Route path="/directory" element={<Navigate to="/directory/customers" replace />} />
         <Route path="/directory/customers" element={<CustomersPage />} />
         <Route path="/directory/suppliers" element={<SuppliersPage />} />
         <Route path="/directory/employees" element={<EmployeesPage />} />

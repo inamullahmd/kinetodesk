@@ -82,7 +82,7 @@ class EmployeesController extends Controller
             'employees.phone_number',
             'employees.role',
             'employees.created_at',
-            DB::raw("CASE WHEN employees.active = 1 THEN 'active' ELSE 'inactive' END as status"),
+            DB::raw("CASE WHEN employees.is_active = 1 THEN 'active' ELSE 'inactive' END as status"),
         ];
     }
 
@@ -202,7 +202,7 @@ class EmployeesController extends Controller
             'lastSaleAt' => function ($query, string $direction) {
                 $this->orderByNullableDate($query, 'sales_stats.last_sale_at', $direction);
             },
-            'status' => 'employees.active',
+            'status' => 'employees.is_active',
         ];
     }
 
@@ -239,7 +239,7 @@ class EmployeesController extends Controller
             return;
         }
 
-        $query->where('employees.active', $status === 'active');
+        $query->where('employees.is_active', $status === 'active');
     }
 
     protected function mapEmployeeBase($row): array
@@ -265,7 +265,7 @@ class EmployeesController extends Controller
         $employeeRow = DB::table('employees')
             ->select([
                 DB::raw('COUNT(*) as total_employees'),
-                DB::raw('SUM(CASE WHEN active = 1 THEN 1 ELSE 0 END) as active_employees'),
+                DB::raw('SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active_employees'),
                 DB::raw("SUM(CASE WHEN role = 'sales_representative' THEN 1 ELSE 0 END) as sales_representatives"),
             ])
             ->first();
