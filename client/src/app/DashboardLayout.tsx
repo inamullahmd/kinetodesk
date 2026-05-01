@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import AppSidebar from './AppSidebar'
 import AppHeader from './AppHeader'
+import ProjectDataDisclaimer from '../shared/components/ProjectDataDisclaimer'
 
 export type DashboardHeaderRange = {
   startDate: string
@@ -50,15 +51,16 @@ export default function DashboardLayout() {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))
   }
 
+  const isDark = theme === 'dark'
+
   return (
-    <div
-      className={
-        theme === 'dark'
-          ? 'min-h-screen bg-slate-950 text-slate-100'
-          : 'min-h-screen bg-slate-50 text-slate-900'
-      }
-    >
-      <div className="flex min-h-screen">
+    <div className={isDark ? 'dark' : ''}>
+      <div
+        className={[
+          'flex min-h-screen',
+          isDark ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-950',
+        ].join(' ')}
+      >
         <AppSidebar theme={theme} />
 
         <div className="flex min-w-0 flex-1 flex-col">
@@ -69,8 +71,8 @@ export default function DashboardLayout() {
             onToggleTheme={toggleTheme}
           />
 
-          <main className="flex-1 px-4 py-6 lg:px-8 lg:py-8">
-            <div className="mx-auto w-full max-w-[1440px]">
+          <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
+            <div className="mx-auto w-full max-w-[1680px]">
               <Outlet
                 context={{
                   setHeaderRange,
@@ -82,6 +84,8 @@ export default function DashboardLayout() {
             </div>
           </main>
         </div>
+
+        <ProjectDataDisclaimer theme={theme} />
       </div>
     </div>
   )

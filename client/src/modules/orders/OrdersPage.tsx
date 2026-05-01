@@ -604,11 +604,6 @@ export default function OrdersPage() {
         title={`${orderType === 'sales' ? 'Sales' : 'Purchase'} Orders`}
         description="Table search respects the selected date range. Direct lookup above ignores date filters."
         variant={theme}
-        action={
-          <div className={`text-sm font-semibold ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-            {formatCurrency(summary?.totalValue ?? 0)}
-          </div>
-        }
       >
         <FilterToolbar
           search={search}

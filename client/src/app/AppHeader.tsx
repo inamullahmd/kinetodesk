@@ -37,6 +37,27 @@ function getPageMeta(pathname: string) {
     }
   }
 
+  if (pathname.startsWith('/finance')) {
+  return {
+    title: 'Finance',
+    subtitle: 'Revenue, payments, refunds, receivables, and commissions',
+  }
+}
+
+if (pathname.startsWith('/about')) {
+  return {
+    title: 'About',
+    subtitle: 'About the project',
+  }
+}
+
+if (pathname.startsWith('/directory')) {
+  return {
+    title: 'Directory',
+    subtitle: 'Customers, employees, and suppliers',
+  }
+}
+
   return {
     title: 'Overview',
     subtitle: 'Business summary and activity',
@@ -185,11 +206,13 @@ export default function AppHeader({
           </h2>
 
           <p
-            className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'
-              }`}
-          >
-            {pageMeta.subtitle}
-          </p>
+  className={[
+    'text-sm leading-6 tracking-[0.01em] [word-spacing:0.08em]',
+    isDark ? 'text-slate-400' : 'text-slate-500',
+  ].join(' ')}
+>
+  {pageMeta.subtitle}
+</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

@@ -2,18 +2,22 @@ import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import {
   Boxes,
-  CalendarDays,
+  BriefcaseBusiness,
   ChevronDown,
-  ClipboardList,
+  ExternalLink,
   LayoutDashboard,
   ShoppingCart,
-  Table2,
-  UserCircle,
   UsersRound,
   WalletCards,
 } from 'lucide-react'
 import { NavLink, useLocation } from 'react-router-dom'
 import type { AppTheme } from './DashboardLayout'
+
+const PORTFOLIO_URL =
+  import.meta.env.VITE_PORTFOLIO_URL || 'https://inamullahmd.com'
+
+const PORTFOLIO_NAME =
+  import.meta.env.VITE_PORTFOLIO_NAME || 'Inamullah Mohammad'
 
 type AppSidebarProps = {
   theme: AppTheme
@@ -66,9 +70,7 @@ function SidebarLink({
         ].join(' ')
       }
     >
-      <span className="flex h-5 w-5 items-center justify-center">
-        {icon}
-      </span>
+      {icon}
       <span>{label}</span>
     </NavLink>
   )
@@ -109,14 +111,13 @@ function ParentChevron({
 }) {
   return (
     <ChevronDown
-      size={16}
       className={[
-        'transition-transform',
+        'h-4 w-4 transition',
         open ? 'rotate-180' : '',
         active
           ? isDark
             ? 'text-blue-300'
-            : 'text-blue-600'
+            : 'text-blue-700'
           : isDark
             ? 'text-slate-500'
             : 'text-slate-400',
@@ -131,21 +132,16 @@ export default function AppSidebar({ theme }: AppSidebarProps) {
 
   const inventoryActive = location.pathname.startsWith('/inventory')
   const directoryActive = location.pathname.startsWith('/directory')
-  
 
   const [inventoryOpen, setInventoryOpen] = useState(inventoryActive)
   const [directoryOpen, setDirectoryOpen] = useState(directoryActive)
 
   useEffect(() => {
-    if (inventoryActive) {
-      setInventoryOpen(true)
-    }
+    if (inventoryActive) setInventoryOpen(true)
   }, [inventoryActive])
 
   useEffect(() => {
-    if (directoryActive) {
-      setDirectoryOpen(true)
-    }
+    if (directoryActive) setDirectoryOpen(true)
   }, [directoryActive])
 
   const inventoryParentClass = [
@@ -161,47 +157,64 @@ export default function AppSidebar({ theme }: AppSidebarProps) {
   return (
     <aside
       className={[
-        'hidden min-h-screen w-[290px] shrink-0 border-r px-5 py-7 lg:block',
+        'sticky top-0 hidden h-screen w-72 shrink-0 flex-col border-r px-4 py-5 lg:flex',
         isDark
           ? 'border-slate-800 bg-slate-950'
           : 'border-slate-200 bg-white',
       ].join(' ')}
     >
-      <div className="mb-10">
-        <div
-          className={[
-            'text-[28px] font-extrabold tracking-tight',
-            isDark ? 'text-white' : 'text-slate-950',
-          ].join(' ')}
-        >
-          kinetodesk.
-        </div>
+      <div className="mb-7 px-2">
+        <div className="flex items-center gap-3">
+          <div
+            className={[
+              'flex h-11 w-11 items-center justify-center rounded-2xl border',
+              isDark
+                ? 'border-slate-800 bg-slate-900'
+                : 'border-slate-200 bg-white',
+            ].join(' ')}
+          >
+            <img
+              src="/favicon.svg"
+              alt=""
+              aria-hidden="true"
+              className="h-6 w-6"
+            />
+          </div>
 
-        <div
-          className={[
-            'mt-1 text-sm font-medium',
-            isDark ? 'text-slate-400' : 'text-slate-500',
-          ].join(' ')}
-        >
-          Admin Dashboard
+          <div>
+            <div
+              className={[
+                'font-brand text-[1.45rem] font-black leading-none tracking-[-0.065em]',
+                isDark ? 'text-white' : 'text-slate-950',
+              ].join(' ')}
+            >
+              Kinetodesk.
+            </div>
+          </div>
         </div>
       </div>
 
       <div
         className={[
-          'mb-4 px-3 text-xs font-bold uppercase tracking-[0.18em]',
+          'mb-3 px-2 text-xs font-semibold uppercase tracking-[0.18em]',
           isDark ? 'text-slate-600' : 'text-slate-400',
         ].join(' ')}
       >
         Menu
       </div>
 
-      <nav className="space-y-1">
+      <nav className="flex flex-1 flex-col gap-2 overflow-y-auto pb-4">
         <SidebarLink
           label="Dashboard"
           to="/dashboard"
-          end
-          icon={<LayoutDashboard size={19} />}
+          icon={<LayoutDashboard size={18} />}
+          theme={theme}
+        />
+
+        <SidebarLink
+          label="Orders"
+          to="/orders"
+          icon={<ShoppingCart size={18} />}
           theme={theme}
         />
 
@@ -212,34 +225,21 @@ export default function AppSidebar({ theme }: AppSidebarProps) {
             className={inventoryParentClass}
           >
             <span className="flex items-center gap-3">
-              <Boxes size={19} />
-              <span>Inventory</span>
+              <Boxes size={18} />
+              Inventory
             </span>
-
-            <ParentChevron open={inventoryOpen} active={inventoryActive} isDark={isDark} />
+            <ParentChevron
+              open={inventoryOpen}
+              active={inventoryActive}
+              isDark={isDark}
+            />
           </button>
 
           {inventoryOpen ? (
-            <div className="ml-8 mt-2 space-y-1">
-              <SidebarSubLink
-                label="Overview"
-                to="/inventory"
-                end
-                theme={theme}
-              />
-
-              <SidebarSubLink
-                label="Products"
-                to="/inventory/products"
-                theme={theme}
-              />
-
-              <SidebarSubLink
-                label="Alerts"
-                to="/inventory/alerts"
-                theme={theme}
-              />
-
+            <div className="mt-2 space-y-1 pl-8">
+              <SidebarSubLink label="Overview" to="/inventory" theme={theme} end />
+              <SidebarSubLink label="Products" to="/inventory/products" theme={theme} />
+              <SidebarSubLink label="Alerts" to="/inventory/alerts" theme={theme} />
               <SidebarSubLink
                 label="Stock Movements"
                 to="/inventory/movements"
@@ -249,13 +249,6 @@ export default function AppSidebar({ theme }: AppSidebarProps) {
           ) : null}
         </div>
 
-        <SidebarLink
-          label="Orders"
-          to="/orders"
-          icon={<ShoppingCart size={19} />}
-          theme={theme}
-        />
-
         <div>
           <button
             type="button"
@@ -263,30 +256,31 @@ export default function AppSidebar({ theme }: AppSidebarProps) {
             className={directoryParentClass}
           >
             <span className="flex items-center gap-3">
-              <UsersRound size={19} />
-              <span>Directory</span>
+              <UsersRound size={18} />
+              Directory
             </span>
-
-            <ParentChevron open={directoryOpen} active={directoryActive} isDark={isDark} />
+            <ParentChevron
+              open={directoryOpen}
+              active={directoryActive}
+              isDark={isDark}
+            />
           </button>
 
           {directoryOpen ? (
-            <div className="ml-8 mt-2 space-y-1">
+            <div className="mt-2 space-y-1 pl-8">
               <SidebarSubLink
                 label="Customers"
                 to="/directory/customers"
                 theme={theme}
               />
-
-              <SidebarSubLink
-                label="Suppliers"
-                to="/directory/suppliers"
-                theme={theme}
-              />
-
               <SidebarSubLink
                 label="Employees"
                 to="/directory/employees"
+                theme={theme}
+              />
+              <SidebarSubLink
+                label="Suppliers"
+                to="/directory/suppliers"
                 theme={theme}
               />
             </div>
@@ -294,47 +288,57 @@ export default function AppSidebar({ theme }: AppSidebarProps) {
         </div>
 
         <SidebarLink
-  label="Finance"
-  to="/finance/overview"
-  icon={<WalletCards size={18} />}
-  theme={theme}
-/>
-
-        <SidebarLink
-          label="Calendar"
-          to="/calendar"
-          icon={<CalendarDays size={19} />}
-          theme={theme}
-        />
-
-        <SidebarLink
-          label="User Profile"
-          to="/profile"
-          icon={<UserCircle size={19} />}
-          theme={theme}
-        />
-
-        <SidebarLink
-          label="Tasks"
-          to="/tasks"
-          icon={<ClipboardList size={19} />}
-          theme={theme}
-        />
-
-        <SidebarLink
-          label="Tables"
-          to="/tables"
-          icon={<Table2 size={19} />}
-          theme={theme}
-        />
-
-        <SidebarLink
-          label="Pages"
-          to="/pages"
-          icon={<WalletCards size={19} />}
+          label="Finance"
+          to="/finance/overview"
+          icon={<WalletCards size={18} />}
           theme={theme}
         />
       </nav>
+
+      <div
+        className={[
+          'mt-auto rounded-3xl border p-4',
+          isDark
+            ? 'border-slate-800 bg-slate-900/60'
+            : 'border-slate-200 bg-slate-50',
+        ].join(' ')}
+      >
+        <div>
+          <div
+            className={[
+              'text-[11px] font-semibold uppercase tracking-[0.14em]',
+              isDark ? 'text-slate-500' : 'text-slate-400',
+            ].join(' ')}
+          >
+            Developed by
+          </div>
+
+          <div
+            className={[
+              'mt-1 text-sm font-semibold uppercase tracking-[0.16em]',
+              isDark ? 'text-white' : 'text-slate-950',
+            ].join(' ')}
+          >
+            {PORTFOLIO_NAME}
+          </div>
+        </div>
+
+        <a
+          href={PORTFOLIO_URL}
+          target="_blank"
+          rel="noreferrer"
+          className={[
+            'mt-4 flex items-center justify-center gap-2 rounded-2xl border px-3 py-2.5 text-sm font-semibold transition',
+            isDark
+              ? 'border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900'
+              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+          ].join(' ')}
+        >
+          <BriefcaseBusiness size={16} />
+          Portfolio
+          <ExternalLink size={14} />
+        </a>
+      </div>
     </aside>
   )
 }
