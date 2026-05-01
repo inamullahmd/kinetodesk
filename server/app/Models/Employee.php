@@ -14,11 +14,11 @@ class Employee extends Model
         'email',
         'phone_number',
         'role',
-        'active'
+        'is_active'
     ];
 
     protected $casts = [
-        'active' => 'boolean',
+        'is_active' => 'boolean',
     ];
 
     public function salesOrders(): HasMany
