@@ -352,84 +352,95 @@ export default function InventoryOverviewPage() {
 
       <div>
         <SectionCard
-  title="Recent Stock Movements"
-  description="Latest inventory quantity changes across products and batches."
-  variant={theme}
+          title="Recent Stock Movements"
+          description="Latest inventory quantity changes across products and batches."
+          variant={theme}
+          action={
+            <Link
+  to="/inventory/movements"
+  className={`text-sm font-semibold ${
+    isDark ? 'text-blue-300' : 'text-blue-600'
+  }`}
 >
-  <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[920px] divide-y divide-slate-200 dark:divide-slate-800">
-        <thead className={isDark ? 'bg-slate-950' : 'bg-slate-50'}>
-          <tr>
-            {['Date', 'Product', 'Movement', 'Qty', 'Batch', 'Unit Cost', 'Reference'].map((heading) => (
-              <th
-                key={heading}
-                className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
-              >
-                {heading}
-              </th>
-            ))}
-          </tr>
-        </thead>
-
-        <tbody
-          className={`divide-y text-sm ${
-            isDark
-              ? 'divide-slate-800 bg-slate-900 text-slate-300'
-              : 'divide-slate-100 bg-white text-slate-700'
-          }`}
+  View all
+</Link>
+          }
         >
-          {data.recentMovements?.length ? (
-            data.recentMovements.map((movement) => (
-              <tr key={movement.id}>
-                <td className="px-4 py-3">{formatDate(movement.movedAt)}</td>
+          <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[920px] divide-y divide-slate-200 dark:divide-slate-800">
+                <thead className={isDark ? 'bg-slate-950' : 'bg-slate-50'}>
+                  <tr>
+                    {['Date', 'Product', 'Movement', 'Qty', 'Batch', 'Unit Cost', 'Reference'].map((heading) => (
+                      <th
+                        key={heading}
+                        className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
+                      >
+                        {heading}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
 
-                <td className="px-4 py-3">
-                  <p className={`font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
-                    {movement.productTitle}
-                  </p>
-                  <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                    {[movement.sku, movement.brandName, movement.modelNumber].filter(Boolean).join(' / ') || '-'}
-                  </p>
-                </td>
-
-                <td className="px-4 py-3">{formatEnumLabel(movement.movementType)}</td>
-
-                <td
-                  className={[
-                    'px-4 py-3 font-data font-semibold',
-                    movement.qtyChange >= 0 ? 'text-emerald-600' : 'text-rose-600',
-                  ].join(' ')}
+                <tbody
+                  className={`divide-y text-sm ${isDark
+                      ? 'divide-slate-800 bg-slate-900 text-slate-300'
+                      : 'divide-slate-100 bg-white text-slate-700'
+                    }`}
                 >
-                  {movement.qtyChange >= 0 ? '+' : ''}
-                  {formatNumber(movement.qtyChange)}
-                </td>
+                  {data.recentMovements?.length ? (
+                    data.recentMovements.map((movement) => (
+                      <tr key={movement.id}>
+                        <td className="px-4 py-3">{formatDate(movement.movedAt)}</td>
 
-                <td className="px-4 py-3">{movement.batchCode || '-'}</td>
+                        <td className="px-4 py-3">
+                          <p className={`font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
+                            {movement.productTitle}
+                          </p>
+                          <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                            {[movement.sku, movement.brandName, movement.modelNumber].filter(Boolean).join(' / ') || '-'}
+                          </p>
+                        </td>
 
-                <td className="px-4 py-3 font-data">
-                  {movement.unitCost !== null && movement.unitCost !== undefined
-                    ? formatCurrency(movement.unitCost)
-                    : '-'}
-                </td>
+                        <td className="px-4 py-3">{formatEnumLabel(movement.movementType)}</td>
 
-                <td className="px-4 py-3">
-                  {[movement.referenceType, movement.referenceId].filter(Boolean).join(' #') || '-'}
-                </td>
-              </tr>
-            ))
-          ) : (
-            <tr>
-              <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500">
-                No recent stock movements found.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</SectionCard>
+                        <td
+                          className={[
+                            'px-4 py-3 font-data font-semibold',
+                            movement.qtyChange >= 0 ? 'text-emerald-600' : 'text-rose-600',
+                          ].join(' ')}
+                        >
+                          {movement.qtyChange >= 0 ? '+' : ''}
+                          {formatNumber(movement.qtyChange)}
+                        </td>
+
+                        <td className="px-4 py-3">{movement.batchCode || '-'}</td>
+
+                        <td className="px-4 py-3 font-data">
+                          {movement.unitCost !== null && movement.unitCost !== undefined
+                            ? formatCurrency(movement.unitCost)
+                            : '-'}
+                        </td>
+
+                        <td className="px-4 py-3">
+                          {[movement.referenceType, movement.referenceId].filter(Boolean).join(' #') || '-'}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500">
+                        No recent stock movements found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            
+          </div>
+          
+        </SectionCard>
       </div>
     </div>
   )

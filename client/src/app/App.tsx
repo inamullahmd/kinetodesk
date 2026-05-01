@@ -8,6 +8,8 @@ import InventoryAlertsPage from '../modules/inventory/InventoryAlertsPage'
 import CustomersPage from '../modules/directory/CustomersPage'
 import SuppliersPage from '../modules/directory/SuppliersPage'
 import EmployeesPage from '../modules/directory/EmployeesPage'
+import InventoryMovementsPage from '../modules/inventory/InventoryMovementsPage'
+import FinanceOverviewPage from '../modules/finance/FinanceOverviewPage'
 
 export default function App() {
   return (
@@ -21,10 +23,13 @@ export default function App() {
         <Route path="/inventory" element={<InventoryOverviewPage />} />
         <Route path="/inventory/products" element={<InventoryProductsPage />} />
         <Route path="/inventory/alerts" element={<InventoryAlertsPage />} />
+        <Route path="/inventory/movements" element={<InventoryMovementsPage />} />
 
         <Route path="/directory/customers" element={<CustomersPage />} />
         <Route path="/directory/suppliers" element={<SuppliersPage />} />
         <Route path="/directory/employees" element={<EmployeesPage />} />
+
+        <Route path="/finance/overview" element={<FinanceOverviewPage />} />
       </Route>
     </Routes>
   )

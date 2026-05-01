@@ -26,6 +26,9 @@ export type InventoryQueryParams = {
   search?: string
   statuses?: string[]
   alertTypes?: string[]
+  movementTypes?: string[]
+  referenceTypes?: string[]
+  direction?: string
   category?: string
   brand?: string
   serialized?: string
@@ -74,6 +77,30 @@ export type InventoryAlertsResponse = {
   filterOptions: InventoryFilterOptions
 }
 
+export type InventoryAlertsQueryParams = InventoryQueryParams
+
+export type InventoryOverviewSummary = {
+  totalProducts: number
+  activeSkus: number
+  inventoryValue: number | string
+  lowStockItems: number
+  outOfStock: number
+  serializedUnits: number
+  productCount?: number
+  activeProducts?: number
+  lowStock?: number
+  stockUnits?: number
+}
+
+export type InventoryCategoryBreakdown = {
+  categoryName: string
+  productCount: number
+  stockQty: number
+  inventoryValue: number | string
+  category?: string
+  stockUnits?: number
+}
+
 export type InventoryRecentMovement = {
   id: number
   movedAt?: string | null
@@ -87,34 +114,6 @@ export type InventoryRecentMovement = {
   sku?: string | null
   modelNumber?: string | null
   brandName?: string | null
-}
-
-export type InventoryAlertsQueryParams = InventoryQueryParams
-
-export type InventoryOverviewSummary = {
-  totalProducts: number
-  activeSkus: number
-  inventoryValue: number | string
-  lowStockItems: number
-  outOfStock: number
-  serializedUnits: number
-
-  // aliases for compatibility
-  productCount?: number
-  activeProducts?: number
-  lowStock?: number
-  stockUnits?: number
-}
-
-export type InventoryCategoryBreakdown = {
-  categoryName: string
-  productCount: number
-  stockQty: number
-  inventoryValue: number | string
-
-  // aliases for compatibility
-  category?: string
-  stockUnits?: number
 }
 
 export type InventoryOverviewResponse = {
@@ -160,3 +159,43 @@ export type InventoryProductDetail = InventoryProductRow & {
   movements: StockMovementRow[]
   serials: ProductSerialRow[]
 }
+
+export type InventoryMovementRow = {
+  id: number
+  productId: number
+  movedAt?: string | null
+  movementType: string
+  qtyChange: number
+  unitCost?: number | string | null
+  movementValue: number | string
+  referenceType?: string | null
+  referenceId?: number | string | null
+  batchCode?: string | null
+  productTitle: string
+  sku?: string | null
+  modelNumber?: string | null
+  brandName?: string | null
+}
+
+export type InventoryMovementsSummary = {
+  totalMovements: number
+  inboundUnits: number
+  outboundUnits: number
+  netQtyChange: number
+  inventoryValueMoved: number | string
+}
+
+export type InventoryMovementsFilterOptions = {
+  movementTypes: string[]
+  referenceTypes: string[]
+  directions: string[]
+}
+
+export type InventoryMovementsResponse = {
+  summary: InventoryMovementsSummary
+  rows: InventoryMovementRow[]
+  pagination: InventoryPagination
+  filterOptions: InventoryMovementsFilterOptions
+}
+
+export type InventoryMovementsQueryParams = InventoryQueryParams

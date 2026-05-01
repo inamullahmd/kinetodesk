@@ -8,7 +8,7 @@ use App\Http\Controllers\api\CustomersController;
 use App\Http\Controllers\api\InventoryController;
 use App\Http\Controllers\api\SuppliersController;
 use App\Http\Controllers\api\EmployeesController;
-
+use App\Http\Controllers\api\FinanceController;
 use App\Http\Controllers\api\LookupController;
 /*
 |--------------------------------------------------------------------------
@@ -35,6 +35,7 @@ Route::get('/inventory/overview', [InventoryController::class, 'overview']);
 Route::get('/inventory/products', [InventoryController::class, 'products']);
 Route::get('/inventory/products/{id}', [InventoryController::class, 'productDetail']);
 Route::get('/inventory/alerts', [InventoryController::class, 'alerts']);
+Route::get('/inventory/movements', [InventoryController::class, 'movements']);
 
 Route::get('/customers', [CustomersController::class, 'index']);
 Route::get('/customers/{id}', [CustomersController::class, 'show']);
@@ -44,5 +45,7 @@ Route::get('/suppliers/{id}', [SuppliersController::class, 'show']);
 
 Route::get('/employees', [EmployeesController::class, 'index']);
 Route::get('/employees/{id}', [EmployeesController::class, 'show']);
+
+Route::get('/finance/overview', [FinanceController::class, 'overview']);
 
 Route::get('/lookup', LookupController::class);

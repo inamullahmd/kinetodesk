@@ -2,6 +2,8 @@ import apiClient from '../../shared/api/client.api'
 import type {
   InventoryAlertsQueryParams,
   InventoryAlertsResponse,
+  InventoryMovementsQueryParams,
+  InventoryMovementsResponse,
   InventoryOverviewResponse,
   InventoryProductDetail,
   InventoryProductsQueryParams,
@@ -33,6 +35,16 @@ export async function getInventoryAlerts(
   params: InventoryAlertsQueryParams,
 ): Promise<InventoryAlertsResponse> {
   const response = await apiClient.get<InventoryAlertsResponse>('/inventory/alerts', {
+    params,
+  })
+
+  return response.data
+}
+
+export async function getInventoryMovements(
+  params: InventoryMovementsQueryParams,
+): Promise<InventoryMovementsResponse> {
+  const response = await apiClient.get<InventoryMovementsResponse>('/inventory/movements', {
     params,
   })
 

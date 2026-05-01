@@ -239,6 +239,12 @@ export default function AppSidebar({ theme }: AppSidebarProps) {
                 to="/inventory/alerts"
                 theme={theme}
               />
+
+              <SidebarSubLink
+                label="Stock Movements"
+                to="/inventory/movements"
+                theme={theme}
+              />
             </div>
           ) : null}
         </div>
@@ -286,6 +292,13 @@ export default function AppSidebar({ theme }: AppSidebarProps) {
             </div>
           ) : null}
         </div>
+
+        <SidebarLink
+  label="Finance"
+  to="/finance/overview"
+  icon={<WalletCards size={18} />}
+  theme={theme}
+/>
 
         <SidebarLink
           label="Calendar"

@@ -79,41 +79,41 @@ class InventoryController extends Controller
             ->toArray();
 
         $recentMovements = DB::table('stock_movements')
-    ->join('products', 'stock_movements.product_id', '=', 'products.id')
-    ->join('brands', 'products.brand_id', '=', 'brands.id')
-    ->leftJoin('stock_batches', 'stock_movements.stock_batch_id', '=', 'stock_batches.id')
-    ->select([
-        'stock_movements.id',
-        'stock_movements.moved_at',
-        'stock_movements.movement_type',
-        'stock_movements.qty_change',
-        'stock_movements.unit_cost',
-        'stock_movements.reference_type',
-        'stock_movements.reference_id',
-        'stock_batches.batch_code',
-        'products.title as product_title',
-        'products.internal_sku',
-        'products.model_number',
-        'brands.name as brand_name',
-    ])
-    ->orderByDesc('stock_movements.moved_at')
-    ->limit(8)
-    ->get()
-    ->map(fn ($row) => [
-        'id' => (int) $row->id,
-        'movedAt' => $this->dateString($row->moved_at),
-        'movementType' => $row->movement_type,
-        'qtyChange' => (float) $row->qty_change,
-        'unitCost' => $row->unit_cost !== null ? round((float) $row->unit_cost, 2) : null,
-        'referenceType' => $row->reference_type,
-        'referenceId' => $row->reference_id,
-        'batchCode' => $row->batch_code,
-        'productTitle' => $row->product_title,
-        'sku' => $row->internal_sku,
-        'modelNumber' => $row->model_number,
-        'brandName' => $row->brand_name,
-    ])
-    ->toArray();
+            ->join('products', 'stock_movements.product_id', '=', 'products.id')
+            ->join('brands', 'products.brand_id', '=', 'brands.id')
+            ->leftJoin('stock_batches', 'stock_movements.stock_batch_id', '=', 'stock_batches.id')
+            ->select([
+                'stock_movements.id',
+                'stock_movements.moved_at',
+                'stock_movements.movement_type',
+                'stock_movements.qty_change',
+                'stock_movements.unit_cost',
+                'stock_movements.reference_type',
+                'stock_movements.reference_id',
+                'stock_batches.batch_code',
+                'products.title as product_title',
+                'products.internal_sku',
+                'products.model_number',
+                'brands.name as brand_name',
+            ])
+            ->orderByDesc('stock_movements.moved_at')
+            ->limit(8)
+            ->get()
+            ->map(fn($row) => [
+                'id' => (int) $row->id,
+                'movedAt' => $this->dateString($row->moved_at),
+                'movementType' => $row->movement_type,
+                'qtyChange' => (float) $row->qty_change,
+                'unitCost' => $row->unit_cost !== null ? round((float) $row->unit_cost, 2) : null,
+                'referenceType' => $row->reference_type,
+                'referenceId' => $row->reference_id,
+                'batchCode' => $row->batch_code,
+                'productTitle' => $row->product_title,
+                'sku' => $row->internal_sku,
+                'modelNumber' => $row->model_number,
+                'brandName' => $row->brand_name,
+            ])
+            ->toArray();
 
         return response()->json([
             'summary' => [
@@ -225,6 +225,47 @@ class InventoryController extends Controller
                 ...$this->filterOptions(),
                 'alertTypes' => ['out_of_stock', 'low_stock', 'stale_stock'],
             ],
+        ]);
+    }
+
+    public function movements(Request $request): JsonResponse
+    {
+        $range = $this->resolveDateRange($request);
+        $pagination = $this->resolvePagination($request);
+
+        $filters = [
+            'search' => trim((string) $request->query('search', '')),
+            'movementTypes' => $this->arrayQuery($request, 'movementTypes'),
+            'referenceTypes' => $this->arrayQuery($request, 'referenceTypes'),
+            'direction' => trim((string) $request->query('direction', 'all')),
+        ];
+
+        $query = $this->baseStockMovementRowsQuery($range['startDate'], $range['endDate']);
+
+        $this->applyStockMovementFilters($query, $filters);
+
+        $total = (clone $query)->count('stock_movements.id');
+        $summary = $this->stockMovementSummary(clone $query);
+
+        $rowsQuery = $query->select($this->stockMovementSelectColumns());
+
+        $this->applySorts($rowsQuery, $request, $this->movementAllowedSorts(), [
+            ['field' => 'movedAt', 'direction' => 'desc'],
+        ]);
+
+        $rows = $rowsQuery
+            ->orderByDesc('stock_movements.id')
+            ->offset($pagination['offset'])
+            ->limit($pagination['perPage'])
+            ->get()
+            ->map(fn($row) => $this->mapStockMovementRow($row))
+            ->toArray();
+
+        return response()->json([
+            'summary' => $summary,
+            'rows' => $rows,
+            'pagination' => $this->paginationPayload($pagination['page'], $pagination['perPage'], $total),
+            'filterOptions' => $this->movementFilterOptions(),
         ]);
     }
 
@@ -570,36 +611,37 @@ class InventoryController extends Controller
     }
 
     protected function productBatches(int $productId): array
-    {
-        return DB::table('stock_batches')
-            ->leftJoin('purchase_orders', 'stock_batches.purchase_order_id', '=', 'purchase_orders.id')
-            ->where('stock_batches.product_id', $productId)
-            ->where('stock_batches.qty_remaining', '>', 0)
-            ->select([
-                'stock_batches.id',
-                'stock_batches.batch_code',
-                'stock_batches.received_at',
-                'stock_batches.qty_received',
-                'stock_batches.qty_remaining',
-                'stock_batches.unit_cost',
-                DB::raw('(stock_batches.qty_remaining * stock_batches.unit_cost) as remaining_value'),
-                'purchase_orders.po_number as purchase_order_number',
-            ])
-            ->orderByDesc('stock_batches.received_at')
-            ->limit(20)
-            ->get()
-            ->map(fn($row) => [
-                'id' => (int) $row->id,
-                'batchCode' => $row->batch_code,
-                'receivedAt' => $this->dateString($row->received_at),
-                'qtyReceived' => (float) $row->qty_received,
-                'qtyRemaining' => (float) $row->qty_remaining,
-                'unitCost' => round((float) $row->unit_cost, 2),
-                'remainingValue' => round((float) $row->remaining_value, 2),
-                'purchaseOrderNumber' => $row->purchase_order_number,
-            ])
-            ->toArray();
-    }
+{
+    return DB::table('stock_batches')
+        ->leftJoin('purchase_order_items', 'stock_batches.purchase_order_item_id', '=', 'purchase_order_items.id')
+        ->leftJoin('purchase_orders', 'purchase_order_items.purchase_order_id', '=', 'purchase_orders.id')
+        ->where('stock_batches.product_id', $productId)
+        ->where('stock_batches.qty_remaining', '>', 0)
+        ->select([
+            'stock_batches.id',
+            'stock_batches.batch_code',
+            'stock_batches.received_at',
+            'stock_batches.qty_received',
+            'stock_batches.qty_remaining',
+            'stock_batches.unit_cost',
+            DB::raw('(stock_batches.qty_remaining * stock_batches.unit_cost) as remaining_value'),
+            'purchase_orders.po_number as purchase_order_number',
+        ])
+        ->orderByDesc('stock_batches.received_at')
+        ->limit(20)
+        ->get()
+        ->map(fn ($row) => [
+            'id' => (int) $row->id,
+            'batchCode' => $row->batch_code,
+            'receivedAt' => $this->dateString($row->received_at),
+            'qtyReceived' => (float) $row->qty_received,
+            'qtyRemaining' => (float) $row->qty_remaining,
+            'unitCost' => round((float) $row->unit_cost, 2),
+            'remainingValue' => round((float) $row->remaining_value, 2),
+            'purchaseOrderNumber' => $row->purchase_order_number,
+        ])
+        ->toArray();
+}
 
     protected function productMovements(int $productId): array
     {
@@ -633,29 +675,29 @@ class InventoryController extends Controller
     }
 
     protected function productSerials(int $productId): array
-    {
-        return DB::table('product_serials')
-            ->leftJoin('stock_batches', 'product_serials.stock_batch_id', '=', 'stock_batches.id')
-            ->where('product_serials.product_id', $productId)
-            ->select([
-                'product_serials.id',
-                'product_serials.serial_number',
-                'product_serials.status',
-                'product_serials.received_at',
-                'stock_batches.batch_code',
-            ])
-            ->orderBy('product_serials.serial_number')
-            ->limit(50)
-            ->get()
-            ->map(fn($row) => [
-                'id' => (int) $row->id,
-                'serialNumber' => $row->serial_number,
-                'status' => $row->status,
-                'receivedAt' => $this->dateString($row->received_at),
-                'batchCode' => $row->batch_code,
-            ])
-            ->toArray();
-    }
+{
+    return DB::table('serial_numbers')
+        ->leftJoin('stock_batches', 'serial_numbers.stock_batch_id', '=', 'stock_batches.id')
+        ->where('serial_numbers.product_id', $productId)
+        ->select([
+            'serial_numbers.id',
+            'serial_numbers.serial_number',
+            'serial_numbers.status',
+            'stock_batches.batch_code',
+            'stock_batches.received_at as batch_received_at',
+        ])
+        ->orderBy('serial_numbers.serial_number')
+        ->limit(50)
+        ->get()
+        ->map(fn ($row) => [
+            'id' => (int) $row->id,
+            'serialNumber' => $row->serial_number,
+            'status' => $row->status,
+            'receivedAt' => $this->dateString($row->batch_received_at),
+            'batchCode' => $row->batch_code,
+        ])
+        ->toArray();
+}
 
     protected function filterOptions(): array
     {
@@ -751,5 +793,163 @@ class InventoryController extends Controller
     protected function dateString($value): ?string
     {
         return $value ? CarbonImmutable::parse($value)->toDateString() : null;
+    }
+
+    protected function baseStockMovementRowsQuery(string $startDate, string $endDate)
+    {
+        return DB::table('stock_movements')
+            ->join('products', 'stock_movements.product_id', '=', 'products.id')
+            ->join('brands', 'products.brand_id', '=', 'brands.id')
+            ->leftJoin('stock_batches', 'stock_movements.stock_batch_id', '=', 'stock_batches.id')
+            ->whereDate('stock_movements.moved_at', '>=', $startDate)
+            ->whereDate('stock_movements.moved_at', '<=', $endDate);
+    }
+
+    protected function stockMovementSelectColumns(): array
+    {
+        return [
+            'stock_movements.id',
+            'stock_movements.product_id',
+            'stock_movements.moved_at',
+            'stock_movements.movement_type',
+            'stock_movements.qty_change',
+            'stock_movements.unit_cost',
+            'stock_movements.reference_type',
+            'stock_movements.reference_id',
+            'stock_batches.batch_code',
+            'products.title as product_title',
+            'products.internal_sku',
+            'products.model_number',
+            'brands.name as brand_name',
+            DB::raw('ABS(stock_movements.qty_change) * COALESCE(stock_movements.unit_cost, 0) as movement_value'),
+        ];
+    }
+
+    protected function applyStockMovementFilters($query, array $filters): void
+    {
+        $search = trim((string) ($filters['search'] ?? ''));
+
+        if ($search !== '') {
+            $like = '%' . $search . '%';
+
+            $query->where(function ($query) use ($like) {
+                $query
+                    ->where('products.title', 'like', $like)
+                    ->orWhere('products.internal_sku', 'like', $like)
+                    ->orWhere('products.model_number', 'like', $like)
+                    ->orWhere('brands.name', 'like', $like)
+                    ->orWhere('stock_batches.batch_code', 'like', $like)
+                    ->orWhere('stock_movements.reference_type', 'like', $like)
+                    ->orWhere('stock_movements.reference_id', 'like', $like);
+            });
+        }
+
+        $movementTypes = array_values(array_filter($filters['movementTypes'] ?? []));
+
+        if (count($movementTypes)) {
+            $query->whereIn('stock_movements.movement_type', $movementTypes);
+        }
+
+        $referenceTypes = array_values(array_filter($filters['referenceTypes'] ?? []));
+
+        if (count($referenceTypes)) {
+            $query->whereIn('stock_movements.reference_type', $referenceTypes);
+        }
+
+        $direction = trim((string) ($filters['direction'] ?? 'all'));
+
+        if ($direction === 'inbound') {
+            $query->where('stock_movements.qty_change', '>', 0);
+        }
+
+        if ($direction === 'outbound') {
+            $query->where('stock_movements.qty_change', '<', 0);
+        }
+    }
+
+    protected function stockMovementSummary($query): array
+    {
+        $row = $query
+            ->selectRaw('COUNT(stock_movements.id) as total_movements')
+            ->selectRaw('SUM(CASE WHEN stock_movements.qty_change > 0 THEN stock_movements.qty_change ELSE 0 END) as inbound_units')
+            ->selectRaw('SUM(CASE WHEN stock_movements.qty_change < 0 THEN ABS(stock_movements.qty_change) ELSE 0 END) as outbound_units')
+            ->selectRaw('SUM(stock_movements.qty_change) as net_qty_change')
+            ->selectRaw('SUM(ABS(stock_movements.qty_change) * COALESCE(stock_movements.unit_cost, 0)) as inventory_value_moved')
+            ->first();
+
+        return [
+            'totalMovements' => (int) ($row->total_movements ?? 0),
+            'inboundUnits' => (float) ($row->inbound_units ?? 0),
+            'outboundUnits' => (float) ($row->outbound_units ?? 0),
+            'netQtyChange' => (float) ($row->net_qty_change ?? 0),
+            'inventoryValueMoved' => round((float) ($row->inventory_value_moved ?? 0), 2),
+        ];
+    }
+
+    protected function movementAllowedSorts(): array
+    {
+        return [
+            'movedAt' => 'stock_movements.moved_at',
+            'product' => 'products.title',
+            'sku' => 'products.internal_sku',
+            'brand' => 'brands.name',
+            'movementType' => 'stock_movements.movement_type',
+            'qtyChange' => 'stock_movements.qty_change',
+            'unitCost' => 'stock_movements.unit_cost',
+            'movementValue' => DB::raw('ABS(stock_movements.qty_change) * COALESCE(stock_movements.unit_cost, 0)'),
+            'batch' => function ($query, string $direction) {
+                $query->orderByRaw('stock_batches.batch_code IS NULL asc');
+                $query->orderBy('stock_batches.batch_code', $direction);
+            },
+            'reference' => function ($query, string $direction) {
+                $query->orderBy('stock_movements.reference_type', $direction);
+                $query->orderBy('stock_movements.reference_id', $direction);
+            },
+        ];
+    }
+
+    protected function movementFilterOptions(): array
+    {
+        $movementTypes = DB::table('stock_movements')
+            ->whereNotNull('movement_type')
+            ->distinct()
+            ->orderBy('movement_type')
+            ->pluck('movement_type')
+            ->values()
+            ->toArray();
+
+        $referenceTypes = DB::table('stock_movements')
+            ->whereNotNull('reference_type')
+            ->distinct()
+            ->orderBy('reference_type')
+            ->pluck('reference_type')
+            ->values()
+            ->toArray();
+
+        return [
+            'movementTypes' => $movementTypes,
+            'referenceTypes' => $referenceTypes,
+            'directions' => ['inbound', 'outbound'],
+        ];
+    }
+
+    protected function mapStockMovementRow($row): array
+    {
+        return [
+            'id' => (int) $row->id,
+            'productId' => (int) $row->product_id,
+            'movedAt' => $this->dateString($row->moved_at),
+            'movementType' => $row->movement_type,
+            'qtyChange' => (float) $row->qty_change,
+            'unitCost' => $row->unit_cost !== null ? round((float) $row->unit_cost, 2) : null,
+            'movementValue' => round((float) $row->movement_value, 2),
+            'referenceType' => $row->reference_type,
+            'referenceId' => $row->reference_id,
+            'batchCode' => $row->batch_code,
+            'productTitle' => $row->product_title,
+            'sku' => $row->internal_sku,
+            'modelNumber' => $row->model_number,
+            'brandName' => $row->brand_name,
+        ];
     }
 }
