@@ -445,38 +445,3 @@ export default function InventoryOverviewPage() {
     </div>
   )
 }
-
-function InfoBox({
-  label,
-  value,
-  variant,
-}: {
-  label: string
-  value: string
-  variant: 'light' | 'dark'
-}) {
-  const isDark = variant === 'dark'
-
-  return (
-    <div
-      className={[
-        'rounded-2xl border p-4',
-        isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-slate-50',
-      ].join(' ')}
-    >
-      <div
-        className={`text-xs font-semibold uppercase tracking-[0.12em] ${isDark ? 'text-slate-500' : 'text-slate-400'
-          }`}
-      >
-        {label}
-      </div>
-
-      <div
-        className={`mt-2 text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-950'
-          }`}
-      >
-        {value}
-      </div>
-    </div>
-  )
-}

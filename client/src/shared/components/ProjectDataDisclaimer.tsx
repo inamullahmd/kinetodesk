@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { CheckCircle2, Info, X } from 'lucide-react'
 import type { AppTheme } from '../../app/DashboardLayout'
 
