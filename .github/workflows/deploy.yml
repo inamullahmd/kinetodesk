@@ -71,7 +71,7 @@ jobs:
           ssh-keyscan -p "${{ secrets.HOSTINGER_PORT }}" "${{ secrets.HOSTINGER_HOST }}" >> ~/.ssh/known_hosts
 
       # -----------------------------
-      # Make sure remote folders exist
+      # Create remote directories
       # -----------------------------
       - name: Create remote directories
         run: |
@@ -92,8 +92,8 @@ jobs:
             "${{ secrets.HOSTINGER_USER }}@${{ secrets.HOSTINGER_HOST }}:${{ secrets.HOSTINGER_CLIENT_DIR }}/"
 
       # -----------------------------
-      # Deploy full Laravel app outside public_html
-      # server -> kinetodesk-server
+      # Deploy full Laravel app
+      # server/ -> kinetodesk-server
       # -----------------------------
       - name: Deploy Laravel backend
         run: |
@@ -108,7 +108,7 @@ jobs:
             --exclude=".git/"
 
       # -----------------------------
-      # Deploy only Laravel public files to API subdomain folder
+      # Deploy Laravel public files only
       # server/public -> public_html/api-kinetodesk
       # -----------------------------
       - name: Deploy Laravel public folder
@@ -121,7 +121,7 @@ jobs:
 
       # -----------------------------
       # Fix Laravel public/index.php paths
-      # because API public folder is separate from the Laravel app folder
+      # Required because API public folder is separate from Laravel app folder
       # -----------------------------
       - name: Fix Laravel public index paths
         run: |
@@ -130,8 +130,8 @@ jobs:
             "${{ secrets.HOSTINGER_USER }}@${{ secrets.HOSTINGER_HOST }}" << EOF
               cd "${{ secrets.HOSTINGER_API_PUBLIC_DIR }}"
 
-              perl -0pi -e "s#__DIR__\s*\.\s*'/\.\./vendor/autoload\.php'#'${{ secrets.HOSTINGER_SERVER_DIR }}/vendor/autoload.php'#g" index.php
-              perl -0pi -e "s#__DIR__\s*\.\s*'/\.\./bootstrap/app\.php'#'${{ secrets.HOSTINGER_SERVER_DIR }}/bootstrap/app.php'#g" index.php
+              sed -i "s#__DIR__.'/../vendor/autoload.php'#'${{ secrets.HOSTINGER_SERVER_DIR }}/vendor/autoload.php'#g" index.php
+              sed -i "s#__DIR__.'/../bootstrap/app.php'#'${{ secrets.HOSTINGER_SERVER_DIR }}/bootstrap/app.php'#g" index.php
 
               grep -n "vendor/autoload.php\|bootstrap/app.php" index.php
           EOF
