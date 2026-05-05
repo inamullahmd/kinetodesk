@@ -1,11 +1,13 @@
 import { Bell, CalendarDays, Moon, Sun } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
+
 import type {
   AppTheme,
   DashboardHeaderDateRangeControl,
   DashboardHeaderRange,
 } from './DashboardLayout'
 
+import DatePickerInput from '../shared/components/DatePickerInput'
 import avatar from '../assets/avatar.png'
 
 type AppHeaderProps = {
@@ -38,25 +40,25 @@ function getPageMeta(pathname: string) {
   }
 
   if (pathname.startsWith('/finance')) {
-  return {
-    title: 'Finance',
-    subtitle: 'Revenue, payments, refunds, receivables, and commissions',
+    return {
+      title: 'Finance',
+      subtitle: 'Revenue, payments, refunds, receivables, and commissions',
+    }
   }
-}
 
-if (pathname.startsWith('/about')) {
-  return {
-    title: 'About',
-    subtitle: 'About the project',
+  if (pathname.startsWith('/about')) {
+    return {
+      title: 'About',
+      subtitle: 'About the project',
+    }
   }
-}
 
-if (pathname.startsWith('/directory')) {
-  return {
-    title: 'Directory',
-    subtitle: 'Customers, employees, and suppliers',
+  if (pathname.startsWith('/directory')) {
+    return {
+      title: 'Directory',
+      subtitle: 'Customers, employees, and suppliers',
+    }
   }
-}
 
   return {
     title: 'Overview',
@@ -67,12 +69,11 @@ if (pathname.startsWith('/directory')) {
 function formatDateRange(startDate: string, endDate: string) {
   const start = new Date(`${startDate}T00:00:00`)
   const end = new Date(`${endDate}T00:00:00`)
-  const sameYear = start.getFullYear() === end.getFullYear()
 
   const startLabel = start.toLocaleDateString('en-US', {
     month: 'long',
     day: 'numeric',
-    ...(sameYear ? {} : { year: 'numeric' }),
+    year: 'numeric',
   })
 
   const endLabel = end.toLocaleDateString('en-US', {
@@ -88,6 +89,7 @@ function clampIsoDate(value: string, minDate?: string, maxDate?: string) {
   if (!value) return value
   if (minDate && value < minDate) return minDate
   if (maxDate && value > maxDate) return maxDate
+
   return value
 }
 
@@ -98,13 +100,6 @@ function HeaderDateRangeInput({
   control: DashboardHeaderDateRangeControl
   isDark: boolean
 }) {
-  const inputClass = [
-    'h-9 rounded-lg border px-2.5 text-sm outline-none transition',
-    isDark
-      ? 'border-slate-800 bg-slate-900 text-slate-200 focus:border-blue-500'
-      : 'border-slate-200 bg-white text-slate-700 focus:border-blue-500',
-  ].join(' ')
-
   const updateStartDate = (value: string) => {
     const nextStart = clampIsoDate(value, control.minDate, control.maxDate)
     const nextEnd = nextStart > control.endDate ? nextStart : control.endDate
@@ -127,37 +122,36 @@ function HeaderDateRangeInput({
   return (
     <div
       className={[
-        'hidden h-12 items-center gap-2 rounded-xl border px-3 py-0 lg:flex',
+        'hidden h-10 items-center gap-1.5 rounded-xl border px-2 py-0 lg:flex',
         isDark
           ? 'border-slate-800 bg-slate-950 text-slate-300'
           : 'border-slate-200 bg-slate-50 text-slate-500',
       ].join(' ')}
     >
-      <CalendarDays
-        size={16}
-        className={isDark ? 'text-slate-500' : 'text-slate-400'}
-      />
-
-      <input
-        type="date"
+      <DatePickerInput
         value={control.startDate}
-        min={control.minDate}
-        max={control.maxDate}
-        onChange={(event) => updateStartDate(event.target.value)}
-        className={inputClass}
+        minDate={control.minDate}
+        maxDate={control.maxDate}
+        onChange={updateStartDate}
+        variant={isDark ? 'dark' : 'light'}
+        size="sm"
+        appearance="ghost"
+        showIcon
+        className="w-[104px]"
       />
 
-      <span className={isDark ? 'text-slate-600' : 'text-slate-300'}>
-        —
-      </span>
+      <span className={isDark ? 'text-slate-600' : 'text-slate-300'}>—</span>
 
-      <input
-        type="date"
+      <DatePickerInput
         value={control.endDate}
-        min={control.startDate}
-        max={control.maxDate}
-        onChange={(event) => updateEndDate(event.target.value)}
-        className={inputClass}
+        minDate={control.startDate}
+        maxDate={control.maxDate}
+        onChange={updateEndDate}
+        variant={isDark ? 'dark' : 'light'}
+        size="sm"
+        appearance="ghost"
+        showIcon
+        className="w-[116px]"
       />
     </div>
   )
@@ -173,12 +167,10 @@ export default function AppHeader({
   const pageMeta = getPageMeta(location.pathname)
   const isDark = theme === 'dark'
 
-  // const avatarUrl = 'https://i.pravatar.cc/96?img=32'
-
   const formattedRange =
-    headerRange && headerRange.startDate && headerRange.endDate
-      ? headerRange.label ?? formatDateRange(headerRange.startDate, headerRange.endDate)
-      : null
+  headerRange && headerRange.startDate && headerRange.endDate
+    ? formatDateRange(headerRange.startDate, headerRange.endDate)
+    : headerRange?.label ?? null
 
   const iconButtonClass = [
     'flex h-10 w-10 items-center justify-center rounded-full border transition',
@@ -191,37 +183,28 @@ export default function AppHeader({
     <header
       className={[
         'border-b px-6 py-4 lg:px-8',
-        isDark
-          ? 'border-slate-800 bg-slate-950'
-          : 'border-slate-200 bg-white',
+        isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white',
       ].join(' ')}
     >
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h2
-            className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-slate-900'
-              }`}
-          >
+          <h2 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
             {pageMeta.title}
           </h2>
 
           <p
-  className={[
-    'text-sm leading-6 tracking-[0.01em] [word-spacing:0.08em]',
-    isDark ? 'text-slate-400' : 'text-slate-500',
-  ].join(' ')}
->
-  {pageMeta.subtitle}
-</p>
+            className={[
+              'text-sm leading-6 tracking-[0.01em] [word-spacing:0.08em]',
+              isDark ? 'text-slate-400' : 'text-slate-500',
+            ].join(' ')}
+          >
+            {pageMeta.subtitle}
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-
           {headerDateRangeControl?.enabled ? (
-            <HeaderDateRangeInput
-              control={headerDateRangeControl}
-              isDark={isDark}
-            />
+            <HeaderDateRangeInput control={headerDateRangeControl} isDark={isDark} />
           ) : formattedRange ? (
             <div
               className={[
@@ -231,11 +214,7 @@ export default function AppHeader({
                   : 'border-slate-200 bg-slate-50 text-slate-500',
               ].join(' ')}
             >
-              <CalendarDays
-                size={16}
-                className={isDark ? 'text-slate-500' : 'text-slate-400'}
-              />
-
+              <CalendarDays size={16} className={isDark ? 'text-slate-500' : 'text-slate-400'} />
               <span>{formattedRange}</span>
             </div>
           ) : null}
@@ -270,11 +249,7 @@ export default function AppHeader({
                 : 'border-slate-200 bg-white hover:bg-slate-50',
             ].join(' ')}
           >
-            <img
-              src={avatar}
-              alt="User avatar"
-              className="h-8 w-8 rounded-full object-cover"
-            />
+            <img src={avatar} alt="User avatar" className="h-8 w-8 rounded-full object-cover" />
           </button>
         </div>
       </div>

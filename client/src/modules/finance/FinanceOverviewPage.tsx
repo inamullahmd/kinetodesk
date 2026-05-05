@@ -20,6 +20,8 @@ import type { DashboardOutletContext } from '../../app/DashboardLayout'
 import type {
   CommissionPayoutRow,
   FinanceOverviewResponse,
+  FinanceTrendChartPoint,
+  FinanceTrendGranularity,
   OpenReceivableRow,
   PaymentMethodBreakdownRow,
   RecentPaymentRow,
@@ -29,6 +31,7 @@ import {
   formatCompactNumber,
   formatCurrency,
   formatNumber,
+  getFinanceTrendGranularity,
 } from '../../shared/utils/format'
 
 const DEFAULT_DATE_RANGE = {
@@ -67,13 +70,109 @@ function tooltipCurrency(value: number | string) {
   return formatCurrency(Number(value ?? 0))
 }
 
-function inputClass(isDark: boolean) {
-  return [
-    'h-10 rounded-xl border px-3 text-sm outline-none transition',
-    isDark
-      ? 'border-slate-800 bg-slate-950 text-slate-200 placeholder:text-slate-600 focus:border-blue-500'
-      : 'border-slate-200 bg-white text-slate-700 placeholder:text-slate-400 focus:border-blue-500',
-  ].join(' ')
+function toDate(value: string) {
+  return new Date(`${value}T00:00:00`)
+}
+
+function formatTrendTooltipLabel(dateIso: string, granularity: FinanceTrendGranularity) {
+  const date = toDate(dateIso)
+
+  if (granularity === 'month') {
+    return date.toLocaleDateString('en-US', {
+      month: 'long',
+      year: 'numeric',
+    })
+  }
+
+  if (granularity === 'week') {
+    const weekEnd = new Date(date)
+    weekEnd.setDate(weekEnd.getDate() + 6)
+
+    const startLabel = date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+
+    const endLabel = weekEnd.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+
+    return `${startLabel} - ${endLabel}`
+  }
+
+  return date.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+function ChartTooltip({
+  active,
+  payload,
+  label,
+  variant,
+  labelFormatter,
+}: {
+  active?: boolean
+  payload?: Array<{
+    name?: string
+    value?: number | string
+    color?: string
+    payload?: FinanceTrendChartPoint
+  }>
+  label?: string
+  variant: 'light' | 'dark'
+  labelFormatter?: (payload?: FinanceTrendChartPoint, label?: string) => string
+}) {
+  if (!active || !payload?.length) return null
+
+  const isDark = variant === 'dark'
+  const point = payload[0]?.payload
+
+  return (
+    <div
+      className={[
+        'rounded-2xl border px-4 py-3 text-sm shadow-2xl',
+        isDark
+          ? 'border-slate-700 bg-slate-950 text-slate-100 shadow-black/40'
+          : 'border-slate-200 bg-white text-slate-900 shadow-slate-200/70',
+      ].join(' ')}
+    >
+      <div
+        className={[
+          'mb-2 font-semibold',
+          isDark ? 'text-slate-100' : 'text-slate-900',
+        ].join(' ')}
+      >
+        {labelFormatter ? labelFormatter(point, label) : label}
+      </div>
+
+      <div className="space-y-1.5">
+        {payload.map((item) => (
+          <div key={item.name} className="flex items-center justify-between gap-6">
+            <div className="flex items-center gap-2">
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: item.color }}
+              />
+
+              <span className={isDark ? 'text-slate-300' : 'text-slate-600'}>
+                {item.name}
+              </span>
+            </div>
+
+            <span className="font-data font-semibold">
+              {tooltipCurrency(item.value ?? 0)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function StatusPill({
@@ -191,18 +290,16 @@ function MoneyListCard({
             >
               <div className="min-w-0">
                 <div
-                  className={`truncate text-sm font-semibold ${
-                    isDark ? 'text-white' : 'text-slate-950'
-                  }`}
+                  className={`truncate text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-950'
+                    }`}
                 >
                   {row.title}
                 </div>
 
                 {row.subtitle ? (
                   <div
-                    className={`mt-1 truncate text-xs ${
-                      isDark ? 'text-slate-500' : 'text-slate-400'
-                    }`}
+                    className={`mt-1 truncate text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'
+                      }`}
                   >
                     {row.subtitle}
                   </div>
@@ -212,9 +309,8 @@ function MoneyListCard({
               </div>
 
               <div
-                className={`shrink-0 text-right font-data text-sm font-semibold ${
-                  isDark ? 'text-white' : 'text-slate-950'
-                }`}
+                className={`shrink-0 text-right font-data text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-950'
+                  }`}
               >
                 {formatCurrency(row.value)}
               </div>
@@ -258,11 +354,10 @@ function DataTable({
         </thead>
 
         <tbody
-          className={`divide-y text-sm ${
-            isDark
-              ? 'divide-slate-800 bg-slate-900 text-slate-300'
-              : 'divide-slate-100 bg-white text-slate-700'
-          }`}
+          className={`divide-y text-sm ${isDark
+            ? 'divide-slate-800 bg-slate-900 text-slate-300'
+            : 'divide-slate-100 bg-white text-slate-700'
+            }`}
         >
           {rows ?? (
             <tr>
@@ -292,12 +387,17 @@ export default function FinanceOverviewPage() {
   const gridColor = isDark ? '#1e293b' : '#e2e8f0'
 
   useEffect(() => {
-    setHeaderRange({
+    setHeaderRange(null)
+
+    setHeaderDateRangeControl({
+      enabled: true,
       startDate,
       endDate,
-      label: `${formatDate(startDate)} - ${formatDate(endDate)}`,
+      onChange: (value) => {
+        setStartDate(value.startDate)
+        setEndDate(value.endDate)
+      },
     })
-    setHeaderDateRangeControl(null)
 
     return () => {
       setHeaderRange(null)
@@ -345,6 +445,11 @@ export default function FinanceOverviewPage() {
     [data],
   )
 
+  const trendGranularity = useMemo(
+    () => getFinanceTrendGranularity(startDate, endDate),
+    [endDate, startDate],
+  )
+
   if (loading) {
     return (
       <SectionCard title="Finance" description="Loading financial data..." variant={theme}>
@@ -373,41 +478,14 @@ export default function FinanceOverviewPage() {
       <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
         <div>
           <h1
-            className={`text-3xl font-semibold tracking-tight ${
-              isDark ? 'text-white' : 'text-slate-950'
-            }`}
+            className={`text-3xl font-semibold tracking-tight ${isDark ? 'text-white' : 'text-slate-950'
+              }`}
           >
             Finance Overview
           </h1>
           <p className={`mt-1 text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
             Revenue, profit, payments, refunds, receivables, and commissions.
           </p>
-        </div>
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <label className="flex flex-col gap-1">
-            <span className={`text-xs font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              Start
-            </span>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(event) => setStartDate(event.target.value)}
-              className={inputClass(isDark)}
-            />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className={`text-xs font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              End
-            </span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(event) => setEndDate(event.target.value)}
-              className={inputClass(isDark)}
-            />
-          </label>
         </div>
       </div>
 
@@ -490,7 +568,16 @@ export default function FinanceOverviewPage() {
                 tickFormatter={(value) => axisCurrency(Number(value))}
                 width={72}
               />
-              <Tooltip formatter={(value) => tooltipCurrency(value as string | number)} />
+              <Tooltip
+                content={
+                  <ChartTooltip
+                    variant={theme}
+                    labelFormatter={(point) =>
+                      point ? formatTrendTooltipLabel(point.date, trendGranularity) : ''
+                    }
+                  />
+                }
+              />
               <Legend />
               <Line
                 type="monotone"
@@ -632,18 +719,18 @@ function RecentPaymentsCard({
         rows={
           rows.length
             ? rows.map((row) => (
-                <tr key={row.id}>
-                  <td className="truncate px-4 py-3">{formatDate(row.paidAt)}</td>
-                  <td className="truncate px-4 py-3 font-data font-semibold">
-                    {row.salesOrderNumber}
-                  </td>
-                  <td className="truncate px-4 py-3">{row.customerName}</td>
-                  <td className="truncate px-4 py-3">{formatEnumLabel(row.method)}</td>
-                  <td className="truncate px-4 py-3 text-right font-data font-semibold">
-                    {formatCurrency(row.amount)}
-                  </td>
-                </tr>
-              ))
+              <tr key={row.id}>
+                <td className="truncate px-4 py-3">{formatDate(row.paidAt)}</td>
+                <td className="truncate px-4 py-3 font-data font-semibold">
+                  {row.salesOrderNumber}
+                </td>
+                <td className="truncate px-4 py-3">{row.customerName}</td>
+                <td className="truncate px-4 py-3">{formatEnumLabel(row.method)}</td>
+                <td className="truncate px-4 py-3 text-right font-data font-semibold">
+                  {formatCurrency(row.amount)}
+                </td>
+              </tr>
+            ))
             : null
         }
       />
@@ -671,20 +758,20 @@ function RecentRefundsCard({
         rows={
           rows.length
             ? rows.map((row) => (
-                <tr key={row.id}>
-                  <td className="truncate px-4 py-3">{formatDate(row.createdAt)}</td>
-                  <td className="truncate px-4 py-3 font-data font-semibold">
-                    {row.returnNumber}
-                  </td>
-                  <td className="truncate px-4 py-3">{row.customerName}</td>
-                  <td className="px-4 py-3">
-                    <StatusPill status={row.status} variant={variant} />
-                  </td>
-                  <td className="truncate px-4 py-3 text-right font-data font-semibold">
-                    {formatCurrency(row.refundAmount)}
-                  </td>
-                </tr>
-              ))
+              <tr key={row.id}>
+                <td className="truncate px-4 py-3">{formatDate(row.createdAt)}</td>
+                <td className="truncate px-4 py-3 font-data font-semibold">
+                  {row.returnNumber}
+                </td>
+                <td className="truncate px-4 py-3">{row.customerName}</td>
+                <td className="px-4 py-3">
+                  <StatusPill status={row.status} variant={variant} />
+                </td>
+                <td className="truncate px-4 py-3 text-right font-data font-semibold">
+                  {formatCurrency(row.refundAmount)}
+                </td>
+              </tr>
+            ))
             : null
         }
       />
@@ -712,23 +799,23 @@ function CommissionsCard({
         rows={
           rows.length
             ? rows.map((row) => (
-                <tr key={row.id}>
-                  <td className="truncate px-4 py-3">
-                    <p className="truncate font-semibold">{row.employeeName}</p>
-                    <p className="truncate text-xs text-slate-500">{row.employeeNumber}</p>
-                  </td>
-                  <td className="truncate px-4 py-3">
-                    {formatDate(row.periodStart)} - {formatDate(row.periodEnd)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusPill status={row.status} variant={variant} />
-                  </td>
-                  <td className="truncate px-4 py-3">{formatDate(row.paidAt)}</td>
-                  <td className="truncate px-4 py-3 text-right font-data font-semibold">
-                    {formatCurrency(row.totalCommission)}
-                  </td>
-                </tr>
-              ))
+              <tr key={row.id}>
+                <td className="truncate px-4 py-3">
+                  <p className="truncate font-semibold">{row.employeeName}</p>
+                  <p className="truncate text-xs text-slate-500">{row.employeeNumber}</p>
+                </td>
+                <td className="truncate px-4 py-3">
+                  {formatDate(row.periodStart)} - {formatDate(row.periodEnd)}
+                </td>
+                <td className="px-4 py-3">
+                  <StatusPill status={row.status} variant={variant} />
+                </td>
+                <td className="truncate px-4 py-3">{formatDate(row.paidAt)}</td>
+                <td className="truncate px-4 py-3 text-right font-data font-semibold">
+                  {formatCurrency(row.totalCommission)}
+                </td>
+              </tr>
+            ))
             : null
         }
       />

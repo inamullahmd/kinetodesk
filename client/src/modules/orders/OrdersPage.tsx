@@ -24,6 +24,7 @@ import type {
 } from './orders.types'
 import { useMultiSort } from '../../shared/hooks/useMultiSort'
 import { formatCompactNumber, formatCurrency, formatNumber, formatEnumLabel, formatDate, formatPhoneNumber } from '../../shared/utils/format'
+import DatePickerInput from '../../shared/components/DatePickerInput'
 
 const ORDERS_MAX_DATE = '2026-03-31'
 
@@ -744,32 +745,33 @@ export default function OrdersPage() {
       >
         <div className="grid grid-cols-1 gap-4">
           <FilterLabel label="Start Date" variant={theme}>
-            <input
-              type="date"
-              max={ORDERS_MAX_DATE}
+            <DatePickerInput
               value={dateRange.startDate}
-              onChange={(event) =>
+              maxDate={ORDERS_MAX_DATE}
+              onChange={(value) => {
                 updateDateRange({
-                  startDate: event.target.value,
+                  startDate: value,
                   endDate: dateRange.endDate,
                 })
-              }
-              className={inputClass}
+              }}
+              placeholder="Start date"
+              variant={theme}
             />
           </FilterLabel>
 
           <FilterLabel label="End Date" variant={theme}>
-            <input
-              type="date"
-              max={ORDERS_MAX_DATE}
+            <DatePickerInput
               value={dateRange.endDate}
-              onChange={(event) =>
+              minDate={dateRange.startDate}
+              maxDate={ORDERS_MAX_DATE}
+              onChange={(value) => {
                 updateDateRange({
                   startDate: dateRange.startDate,
-                  endDate: event.target.value,
+                  endDate: value,
                 })
-              }
-              className={inputClass}
+              }}
+              placeholder="End date"
+              variant={theme}
             />
           </FilterLabel>
 

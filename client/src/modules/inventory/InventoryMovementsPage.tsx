@@ -25,6 +25,7 @@ import {
   FilterLabel,
   PaginationControls,
 } from './inventoryShared'
+import DatePickerInput from '../../shared/components/DatePickerInput'
 
 export default function InventoryMovementsPage() {
   const { setHeaderRange, setHeaderDateRangeControl, theme } =
@@ -201,9 +202,8 @@ export default function InventoryMovementsPage() {
     <div className="space-y-6">
       <div>
         <h1
-          className={`text-3xl font-semibold tracking-tight ${
-            isDark ? 'text-white' : 'text-slate-950'
-          }`}
+          className={`text-3xl font-semibold tracking-tight ${isDark ? 'text-white' : 'text-slate-950'
+            }`}
         >
           Stock Movements
         </h1>
@@ -276,11 +276,10 @@ export default function InventoryMovementsPage() {
 
         {loading ? (
           <div
-            className={`rounded-2xl border py-12 text-center text-sm ${
-              isDark
+            className={`rounded-2xl border py-12 text-center text-sm ${isDark
                 ? 'border-slate-800 text-slate-400'
                 : 'border-slate-200 text-slate-500'
-            }`}
+              }`}
           >
             Loading stock movements...
           </div>
@@ -311,11 +310,10 @@ export default function InventoryMovementsPage() {
           </>
         ) : (
           <div
-            className={`rounded-2xl border p-8 text-center text-sm ${
-              isDark
+            className={`rounded-2xl border p-8 text-center text-sm ${isDark
                 ? 'border-slate-800 text-slate-400'
                 : 'border-slate-200 text-slate-500'
-            }`}
+              }`}
           >
             No stock movements found for the selected filters.
           </div>
@@ -334,26 +332,26 @@ export default function InventoryMovementsPage() {
         <div className="grid grid-cols-1 gap-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <FilterLabel label="Start Date" variant={theme}>
-              <input
-                type="date"
+              <DatePickerInput
                 value={startDate}
-                onChange={(event) => {
-                  setStartDate(event.target.value)
+                onChange={(value) => {
+                  setStartDate(value)
                   setPage(1)
                 }}
-                className={inputClass}
+                placeholder="Start date"
+                variant={theme}
               />
             </FilterLabel>
 
             <FilterLabel label="End Date" variant={theme}>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(event) => {
-                  setEndDate(event.target.value)
+              <DatePickerInput
+                value={startDate}
+                onChange={(value) => {
+                  setStartDate(value)
                   setPage(1)
                 }}
-                className={inputClass}
+                placeholder="Start date"
+                variant={theme}
               />
             </FilterLabel>
           </div>
@@ -671,16 +669,14 @@ function MiniBox({
       ].join(' ')}
     >
       <div
-        className={`text-xs font-semibold uppercase tracking-[0.12em] ${
-          isDark ? 'text-slate-500' : 'text-slate-400'
-        }`}
+        className={`text-xs font-semibold uppercase tracking-[0.12em] ${isDark ? 'text-slate-500' : 'text-slate-400'
+          }`}
       >
         {label}
       </div>
       <div
-        className={`mt-2 font-data text-sm font-semibold ${
-          isDark ? 'text-white' : 'text-slate-950'
-        }`}
+        className={`mt-2 font-data text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-950'
+          }`}
       >
         {value}
       </div>

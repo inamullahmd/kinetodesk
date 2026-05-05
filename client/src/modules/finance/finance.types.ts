@@ -104,3 +104,14 @@ export type FinanceOverviewQueryParams = {
   startDate?: string
   endDate?: string
 }
+
+export type FinanceTrendGranularity = 'day' | 'week' | 'month'
+
+export type FinanceTrendChartPoint = {
+  date: string
+  label: string
+  revenue: number
+  grossProfit: number
+  payments: number
+  orders: number
+}
